@@ -23,7 +23,10 @@ const COUNTRY_COUNTS_KEY = 'sanctions:country-counts:v1';
 const COUNTRY_COUNTS_META_KEY = 'seed-meta:sanctions:country-counts';
 const SOURCE_SNAPSHOTS_KEY = 'sanctions:source-snapshots:v1';
 const SOURCE_SNAPSHOTS_META_KEY = 'seed-meta:sanctions:source-snapshots';
-const SOURCE_RETAIN_MS = 720 * 60 * 1000;
+// OFAC's lists change slowly, and a Railway container can lose egress to
+// treasury.gov/S3 for several runs; 12h dropped ~20k OFAC entities on 2026-09-27.
+const SOURCE_RETAIN_MS = 48 * 60 * 60 * 1000;
+const SOURCE_SNAPSHOTS_TTL = 54 * 60 * 60; // retention + one 6h cron
 const SNAPSHOT_MAX_BYTES = 32 * 1024 * 1024;
 const CACHE_TTL = 18 * 60 * 60; // 18h — 3× live 6h cron; remains queryable after the 12h freshness alarm
 // Compact entity type codes for the lookup index (saves space vs full enum strings)
@@ -738,7 +741,7 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   zeroIsValid: true,
   beforePublish: async (data) => {
     const count = Object.values(data._sourceSnapshots).reduce((sum, snapshot) => sum + (snapshot?.records.length ?? 0), 0);
-    await writeExtraKeyWithMeta(SOURCE_SNAPSHOTS_KEY, encodeSourceSnapshots(data._sourceSnapshots), CACHE_TTL, count, SOURCE_SNAPSHOTS_META_KEY);
+    await writeExtraKeyWithMeta(SOURCE_SNAPSHOTS_KEY, encodeSourceSnapshots(data._sourceSnapshots), SOURCE_SNAPSHOTS_TTL, count, SOURCE_SNAPSHOTS_META_KEY);
   },
   extraKeys: [
     {
