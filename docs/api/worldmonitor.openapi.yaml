@@ -45093,7 +45093,7 @@ components:
                 percentageOfUsual:
                     type: integer
                     format: int32
-                    description: Percent of usual; see has_baseline.
+                    description: 'Percent of usual; see has_baseline (JSON: hasBaseline).'
                 isSpike:
                     type: boolean
                     description: Sustained anomaly.

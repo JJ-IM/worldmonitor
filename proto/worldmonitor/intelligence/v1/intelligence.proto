@@ -134,7 +134,7 @@ message PizzintLocation {
   string address = 3;
   // Live busyness (0-200+).
   int32 current_popularity = 4;
-  // Percent of usual; see has_baseline.
+  // Percent of usual; see has_baseline (JSON: hasBaseline).
   int32 percentage_of_usual = 5;
   // Sustained anomaly.
   bool is_spike = 6;
