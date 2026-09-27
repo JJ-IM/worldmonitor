@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
+import { parseDyadExport, mergeDyadBuckets, scoreDyads } from './_gdelt-dyad-tension.mjs';
+import { GDELT_BULK_DYAD_KEY } from './_gdelt-bulk-contract.mjs';
 
 import {
   loadEnvFile,
@@ -64,6 +66,7 @@ const MAX_RECENT_GEO_RECORDS = 5_000;
 const INTEL_TTL = 86_400;
 const TIMELINE_TTL = 7 * 86_400;
 const STATE_TTL = 14 * 86_400;
+const DYAD_TTL = 92 * 86_400;
 const CONFLICT_TTL = 6 * 60 * 60;
 const UNREST_TTL = 4.5 * 60 * 60;
 // 3h, NOT 45min: api/health.js gates positiveGeoEvents at maxStaleMin 60 AND
@@ -256,7 +259,7 @@ export async function fetchGdeltBulkFiles({
       const csv = extractGdeltBulkCsv(zip, descriptor);
       return descriptor.kind === 'gkg'
         ? { descriptor, records: parseGdeltGkgCsv(csv) }
-        : { descriptor, events: mapGdeltExportToConflictEvents(csv) };
+        : { descriptor, events: mapGdeltExportToConflictEvents(csv), dyads: parseDyadExport(csv) };
     },
   );
   return downloaded;
@@ -389,10 +392,11 @@ export async function fetchMaterializedGdelt(deps = {}) {
   // the state key: the state already holds the compacted geo batches and the
   // conflict window, and ~250 countries of rows would push it toward the 5MB
   // write ceiling (#7748).
-  const [previousIntel, previousState, previousCountryIndex] = await Promise.all([
+  const [previousIntel, previousState, previousCountryIndex, previousDyads] = await Promise.all([
     _readSnapshot(GDELT_INTEL_KEY),
     _readSnapshot(GDELT_BULK_STATE_KEY),
     _readSnapshot(GDELT_BULK_COUNTRY_ARTICLES_KEY),
+    _readSnapshot(GDELT_BULK_DYAD_KEY),
   ]);
   const downloaded = await _fetchFiles({
     afterTimestamp: previousState?.cursor || {},
@@ -485,8 +489,15 @@ export async function fetchMaterializedGdelt(deps = {}) {
     throw new Error('GDELT bulk materializer has no conflict export data');
   }
 
+  const dyads = mergeDyadBuckets(previousDyads, downloaded
+    .filter(({ descriptor }) => descriptor.kind === 'export')
+    .map(({ descriptor, dyads, csv }) => ({
+      timestamp: descriptor.timestamp, dyads: dyads ?? parseDyadExport(csv),
+    })), nowMs);
+
   return {
     ...materialized.intel,
+    _dyads: { ...dyads, ...scoreDyads(dyads, nowMs), updatedAt: nowMs },
     _timelines: materialized.timelines,
     _unrest: materialized.unrest,
     _positive: materialized.positive,
@@ -575,6 +586,14 @@ export async function afterPublish(data, _meta, deps = {}) {
     ],
   );
   outputOperations.push(
+    {
+      label: GDELT_BULK_DYAD_KEY,
+      run: () => _writeExtraKeyWithMeta(
+        GDELT_BULK_DYAD_KEY, data._dyads, DYAD_TTL,
+        Object.keys(data._dyads?.days ?? {}).length,
+        'seed-meta:gdelt:bulk:dyad-tension',
+      ),
+    },
     {
       label: GDELT_BULK_CONFLICT_KEY,
       run: () => _writeExtraKey(GDELT_BULK_CONFLICT_KEY, data._conflict, CONFLICT_TTL),

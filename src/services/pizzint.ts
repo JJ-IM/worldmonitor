@@ -22,7 +22,7 @@ const pizzintBreaker = createCircuitBreaker<PizzIntStatus>({
 });
 
 const gdeltBreaker = createCircuitBreaker<GdeltTensionPair[]>({
-  name: 'GDELT Tensions',
+  name: 'WM GDELT Dyad Tensions v1',
   maxFailures: 3,
   cooldownMs: 5 * 60 * 1000,
   cacheTtlMs: 15 * 60 * 1000,
