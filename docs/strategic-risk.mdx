@@ -211,6 +211,8 @@ plus today's bucket, with a 92-day TTL and its own replay cursor. Health checks
 `seed-meta:gdelt:bulk:dyad-tension` at a 45-minute budget for the 15-minute worker.
 The API withholds snapshots older than 45 minutes even though history remains
 stored. Healthy ingestion does not mean that the 90-day scoring history is ready.
+The probe stays pending until the first successful data and metadata publication
+sets its durable activation marker. It then enforces freshness permanently.
 Pizza outages do not hide available tensions. Initial rollout builds history
 through normal worker runs; it does not backfill exports.
 | GPS/GNSS interference | `GET /api/intelligence/v1/list-gps-interference` | Reads normalized GPSJam Redis keys, with optional `region` filtering. |

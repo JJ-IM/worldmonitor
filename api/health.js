@@ -1179,7 +1179,14 @@ const SEED_META = {
   },
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // 15min bulk materializer; 45min = 3× cadence and expires before the 24h canonical key.
-  gdeltDyadTension: { key: 'seed-meta:gdelt:bulk:dyad-tension', maxStaleMin: 45 },
+  gdeltDyadTension: {
+    key: 'seed-meta:gdelt:bulk:dyad-tension', maxStaleMin: 45,
+    activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    cutover: {
+      mode: 'activation-marker', fromKey: null, issue: 8676,
+      activationKey: 'seed-activated:gdelt:bulk:dyad-tension',
+    },
+  },
   // Same materializer tick as gdeltIntel; the 2-day data TTL outlives this
   // gate. Pending until the materializer's first successful index publish
   // writes the durable marker, strict after it (#7748).

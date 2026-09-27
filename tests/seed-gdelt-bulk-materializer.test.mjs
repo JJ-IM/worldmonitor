@@ -1101,3 +1101,19 @@ describe('gdelt materializer freshness constants stay in lockstep (#5864)', () =
     );
   });
 });
+
+describe('dyad health activation', () => {
+  for (const succeeds of [false, true]) {
+    it(`activates only when its data and metadata publish succeeds (${succeeds})`, async () => {
+      let activated = false;
+      const outcome = await afterPublish(publicationData(), undefined, {
+        _writeExtraKey: async () => {},
+        _writeExtraKeyWithMeta: async key => key === 'gdelt:bulk:dyad-tension:v1' ? succeeds : true,
+        _writeActivationMarker: async () => {},
+        _writeDyadActivationMarker: async () => { activated = true; },
+      });
+      assert.equal(activated, succeeds);
+      assert.equal(outcome.completionState, succeeds ? 'OK' : 'DEGRADED');
+    });
+  }
+});

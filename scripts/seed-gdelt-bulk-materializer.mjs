@@ -106,13 +106,13 @@ export function countryIndexRecordCount(index) {
 // Best-effort by design (mirrors seed-cbr-rates): failing to write the marker
 // must not degrade a run that already published good data. The cost of a
 // miss is one more tick of pending, not a wrong verdict.
-async function writeCountryIndexActivation() {
+async function writeActivation(key) {
   try {
     const creds = getOptionalUpstashCreds();
     if (!creds) return;
-    await upstashCommand(creds, ['SET', COUNTRY_ARTICLES_ACTIVATION_KEY, '1']);
+    await upstashCommand(creds, ['SET', key, '1']);
   } catch (error) {
-    console.warn(`  WARN: country-index activation marker write failed: ${error?.message || error}`);
+    console.warn(`  WARN: ${key} activation marker write failed: ${error?.message || error}`);
   }
 }
 
@@ -563,7 +563,8 @@ export async function afterPublish(data, _meta, deps = {}) {
   const {
     _writeExtraKey = writeExtraKey,
     _writeExtraKeyWithMeta = writeExtraKeyWithMeta,
-    _writeActivationMarker = writeCountryIndexActivation,
+    _writeActivationMarker = () => writeActivation(COUNTRY_ARTICLES_ACTIVATION_KEY),
+    _writeDyadActivationMarker = () => writeActivation('seed-activated:gdelt:bulk:dyad-tension'),
   } = deps;
   const outputOperations = Object.entries(data._timelines ?? {}).flatMap(
     ([topic, series]) => [
@@ -645,6 +646,10 @@ export async function afterPublish(data, _meta, deps = {}) {
   const countryIndexResult = settled[outputOperations.findIndex(({ label }) => label === COUNTRY_ARTICLES_META_KEY)];
   if (countryIndexResult?.status === 'fulfilled' && countryIndexResult.value !== false) {
     await _writeActivationMarker();
+  }
+  const dyadResult = settled[outputOperations.findIndex(({ label }) => label === GDELT_BULK_DYAD_KEY)];
+  if (dyadResult?.status === 'fulfilled' && dyadResult.value !== false) {
+    await _writeDyadActivationMarker();
   }
   const failures = settled.flatMap((result, index) => {
     if (result.status === 'rejected') return [result.reason];
