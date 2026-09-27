@@ -53,7 +53,7 @@ const liveUnavailable = { status: 'Error', message: 'No live data available.', a
 const liveReading = (live, forecast, extra = {}) => ({
   ok: true, status: 200, json: async () => ({
     status: 'OK',
-    analysis: { venue_live_busyness: live, venue_live_busyness_available: true, venue_forecasted_busyness: forecast, venue_live_forecasted_delta: live - forecast },
+    analysis: { venue_live_busyness: live, venue_live_busyness_available: true, venue_forecast_busyness_available: true, venue_forecasted_busyness: forecast, venue_live_forecasted_delta: live - forecast },
     venue_info: { venue_open: 'Open', venue_address: '1419 S Fern St Arlington VA 22202', ...extra },
   }),
 });
@@ -170,6 +170,36 @@ test('reports a rejected GDELT request by status without logging its body', asyn
 // live busyness for the same Pentagon-area venues replaces the feed while it is
 // down; without a live reading nothing is published, as before.
 const BESTTIME_KEY = 'pri_test_secret_value';
+for (const [label, baseline] of [
+  ['unavailable forecast', { venue_forecast_busyness_available: false, venue_forecasted_busyness: 0, venue_live_forecasted_delta: 60 }],
+  ['missing forecast', { venue_forecast_busyness_available: true }],
+  ['non-finite forecast', { venue_forecast_busyness_available: true, venue_forecasted_busyness: NaN }],
+]) {
+  test(`keeps live readings without inventing spikes from ${label}`, async () => {
+    const { state, seed } = harness();
+    state.source = emptyResponse;
+    state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+    await seed();
+    for (const { url } of state.besttimeCalls) {
+      state.besttime.set(new URL(url).searchParams.get('venue_id'), {
+        ok: true, json: async () => ({
+          analysis: { venue_live_busyness_available: true, venue_live_busyness: 60, ...baseline },
+          venue_info: { venue_open: 'Open' },
+        }),
+      });
+    }
+    await seed();
+    const { pizzint } = state.cache.get(payloadKey).data.data;
+    assert.equal(pizzint.aggregateActivity, 60);
+    assert.equal(pizzint.activeSpikes, 0);
+    assert.equal(pizzint.defconLevel, 3);
+    for (const location of pizzint.locations) {
+      assert.equal(location.percentageOfUsual, 0);
+      assert.equal(location.spikeMagnitude, 0);
+    }
+  });
+}
+
 test('falls back to BestTime live busyness when PizzINT is empty', async () => {
   const { state, seed } = harness();
   state.source = emptyResponse;

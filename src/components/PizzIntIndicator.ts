@@ -76,6 +76,13 @@ export class PizzIntIndicator {
     const locationsEl = this.element.querySelector('.pizzint-locations') as HTMLElement;
     const updatedEl = this.element.querySelector('.pizzint-updated') as HTMLElement;
 
+    const sourceEl = this.element.querySelector<HTMLAnchorElement>('.pizzint-source a');
+    if (sourceEl) {
+      const isBestTime = this.status.locations.some(loc => loc.data_source === 'besttime');
+      sourceEl.textContent = isBestTime ? 'BestTime' : 'PizzINT';
+      sourceEl.href = isBestTime ? 'https://besttime.app' : 'https://pizzint.watch';
+    }
+
     const color = DEFCON_COLORS[this.status.defconLevel] || '#888';
     defconEl.textContent = t('components.pizzint.defcon', { level: String(this.status.defconLevel) });
     defconEl.style.background = color;
