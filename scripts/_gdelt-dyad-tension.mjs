@@ -1,4 +1,4 @@
-import pairs from '../shared/gdelt-tension-pairs.json' with { type: 'json' };
+import pairs from './shared/gdelt-tension-pairs.json' with { type: 'json' };
 import { gdeltTimestampToMs } from './_conflict-gdelt-bulk.mjs';
 
 const DAY_MS = 86_400_000;
