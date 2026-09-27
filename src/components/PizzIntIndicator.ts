@@ -36,7 +36,7 @@ export class PizzIntIndicator {
       h('div', { className: 'pizzint-footer' },
         h('span', { className: 'pizzint-source' },
           t('components.pizzint.source'), ' ',
-          h('a', { href: 'https://pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
+          h('a', { href: 'https://www.pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
         ),
         h('span', { className: 'pizzint-updated' }),
       ),
@@ -80,7 +80,7 @@ export class PizzIntIndicator {
     if (sourceEl) {
       const isBestTime = this.status.locations.some(loc => loc.data_source === 'besttime');
       sourceEl.textContent = isBestTime ? 'BestTime' : 'PizzINT';
-      sourceEl.href = isBestTime ? 'https://besttime.app' : 'https://pizzint.watch';
+      sourceEl.href = isBestTime ? 'https://besttime.app' : 'https://www.pizzint.watch';
     }
 
     const color = DEFCON_COLORS[this.status.defconLevel] || '#888';

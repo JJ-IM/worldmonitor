@@ -24,5 +24,5 @@ it('switches source attribution during fallback and restores it on recovery', ()
   expect(source().href).toBe('https://besttime.app/');
   indicator.updateStatus({ ...status, locations: status.locations.map(loc => ({ ...loc, data_source: 'google' })) });
   expect(source().textContent).toBe('PizzINT');
-  expect(source().href).toBe('https://pizzint.watch/');
+  expect(source().href).toBe('https://www.pizzint.watch/');
 });
