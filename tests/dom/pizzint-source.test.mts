@@ -20,6 +20,7 @@ it('switches source attribution during fallback and restores it on recovery', ()
   };
   const source = () => indicator.getElement().querySelector<HTMLAnchorElement>('.pizzint-source a')!;
   indicator.updateStatus(status);
+  expect(indicator.getElement().querySelector('.pizzint-score')).toBeNull();
   expect(indicator.getElement().querySelector('.pizzint-source')!.textContent).toContain('components.pizzint.indexSource');
   expect(source().textContent).toBe('BestTime');
   expect(source().href).toBe('https://besttime.app/');
@@ -36,4 +37,7 @@ it('switches source attribution during fallback and restores it on recovery', ()
   status.locations[0] = { ...status.locations[0]!, current_popularity: 0, percentage_of_usual: null, is_spike: false, no_live_signal: true };
   indicator.updateStatus(status);
   expect(label()).toBe('components.pizzint.statusNoData');
+  status.locations[0] = { ...status.locations[0]!, percentage_of_usual: 0, no_live_signal: false };
+  indicator.updateStatus(status);
+  expect(label()).toBe('−100% components.pizzint.vsUsual');
 });

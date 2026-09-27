@@ -77,6 +77,7 @@ export interface PizzintLocation {
   lat: number;
   lng: number;
   noLiveSignal: boolean;
+  hasBaseline: boolean;
 }
 
 export interface GdeltTensionPair {

@@ -350,6 +350,18 @@ test('open live zero with forecast 40 is no live signal and excluded from the op
   assert.equal(run.status().aggregateActivity, 100);
 });
 
+test('a real zero against a small baseline remains distinct from an unavailable baseline', async () => {
+  const run = await besttimeHarness([[0, 10], [60, 0]]);
+  await run.seed();
+  const [quiet, unknown] = run.status().locations;
+  assert.equal(quiet.hasBaseline, true);
+  assert.equal(quiet.percentageOfUsual, 0);
+  assert.equal(quiet.noLiveSignal, false);
+  assert.equal(unknown.hasBaseline, false);
+  assert.equal(unknown.noLiveSignal, false);
+  assert.equal(run.status().locationsOpen, 2);
+});
+
 async function advance(run, minutes = 10) {
   run.state.now += minutes * 60_000;
   await run.seed();

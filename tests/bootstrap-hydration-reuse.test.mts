@@ -721,6 +721,11 @@ describe('bootstrap hydration reuse (#7048)', () => {
       defconLabel: 'fresh',
       updatedAt: 2,
       dataFreshness: 'DATA_FRESHNESS_FRESH',
+      locations: [...staleStatus.locations, {
+        placeId: 'quiet-live', name: 'Quiet Pizza', currentPopularity: 0,
+        percentageOfUsual: 0, hasBaseline: true, noLiveSignal: false, isClosedNow: false,
+        dataFreshness: 'DATA_FRESHNESS_FRESH',
+      }],
     };
     const requests = bootstrapStub(
       { pizzint: { pizzint: staleStatus, tensionPairs: [] } },
@@ -736,6 +741,7 @@ describe('bootstrap hydration reuse (#7048)', () => {
     assert.equal(hydrated.locations[0].no_live_signal, true);
     assert.equal(recovered.dataFreshness, 'fresh');
     assert.equal(recovered.locations[0].no_live_signal, true);
+    assert.equal(recovered.locations[1].percentage_of_usual, 0);
     assert.deepEqual(cached, recovered);
     assert.equal(rpcUrlCount(requests), 1, 'stale hydration must retry once and cache only the fresh result');
   });

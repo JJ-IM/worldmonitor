@@ -8100,9 +8100,10 @@ function scorePizzintLocations(locations, previous, now) {
   for (const location of locations) {
     const live = location.currentPopularity;
     const forecast = location.forecastPopularity;
+    location.hasBaseline = Number.isFinite(forecast) && forecast > 0;
     location.noLiveSignal = !Number.isFinite(live) || live < 0
       || (!location.isClosedNow && live === 0 && (forecast >= 20 || !(forecast > 0)));
-    const delta = Number.isFinite(forecast) && forecast > 0 ? Math.max(0, live - forecast) : 0;
+    const delta = location.hasBaseline ? Math.max(0, live - forecast) : 0;
     const observedAt = Date.parse(location.recordedAt);
     const candidate = !location.isClosedNow && !location.noLiveSignal
       && location.dataFreshness === 'DATA_FRESHNESS_FRESH'
@@ -8112,8 +8113,8 @@ function scorePizzintLocations(locations, previous, now) {
     const continues = candidate && gap >= 9 * 60_000 && gap <= 15 * 60_000
       && prior?.anomalyStartedAt > 0 && prior.anomalyStartedAt <= previous.updatedAt
       && observedAt > Date.parse(prior.recordedAt);
-    // Internal cache fields survive relay restarts; only noLiveSignal needs a
-    // new public proto field. Old payloads have no start time and start afresh.
+    // Internal cache fields survive relay restarts. Old payloads have no start
+    // time and start afresh.
     location.anomalyStartedAt = candidate ? (continues ? prior.anomalyStartedAt : now) : 0;
     location.isSpike = candidate && now - location.anomalyStartedAt >= 20 * 60_000;
     location.spikeMagnitude = location.isSpike ? delta : 0;

@@ -50,7 +50,6 @@ export class PizzIntIndicator {
       },
         h('span', { className: 'pizzint-icon' }, '🍕'),
         h('span', { className: 'pizzint-defcon' }, '--'),
-        h('span', { className: 'pizzint-score' }, '--%'),
       ),
       panel,
     );
@@ -71,7 +70,6 @@ export class PizzIntIndicator {
     if (!this.status) return;
 
     const defconEl = this.element.querySelector('.pizzint-defcon') as HTMLElement;
-    const scoreEl = this.element.querySelector('.pizzint-score') as HTMLElement;
     const labelEl = this.element.querySelector('.pizzint-defcon-label') as HTMLElement;
     const locationsEl = this.element.querySelector('.pizzint-locations') as HTMLElement;
     const updatedEl = this.element.querySelector('.pizzint-updated') as HTMLElement;
@@ -90,7 +88,6 @@ export class PizzIntIndicator {
     // blue #00aaff→8.2:1); white failed on levels 4–5 (4.22:1 / 2.56:1).
     defconEl.style.color = '#000';
 
-    scoreEl.textContent = `${this.status.aggregateActivity}%`;
     labelEl.textContent = this.getDefconLabel(this.status.defconLevel);
     labelEl.style.color = color;
 
@@ -140,7 +137,7 @@ export class PizzIntIndicator {
     const deviation = Math.round(loc.percentage_of_usual - 100);
     if (loc.is_spike) return `${t('components.pizzint.statusSpike')} +${deviation}%`;
     if (Math.abs(deviation) <= 10) return t('components.pizzint.statusNormal');
-    return `${deviation > 0 ? '+' : ''}${deviation}% ${t('components.pizzint.vsUsual')}`;
+    return `${deviation > 0 ? '+' : '−'}${Math.abs(deviation)}% ${t('components.pizzint.vsUsual')}`;
   }
 
   private formatTimeAgo(date: Date): string {
