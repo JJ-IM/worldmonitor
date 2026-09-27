@@ -150,32 +150,35 @@ Aggregate activity maps to a 5-level readiness scale:
 | **DEFCON 4** | 25% – 49% | Above Normal | Increased vigilance |
 | **DEFCON 5** | &lt;25% | Normal Activity | Normal peacetime operations |
 
-### GDELT Tension Pairs
+### World Monitor Tension Pairs
 
-The indicator also displays geopolitical tension scores from GDELT (Global Database of Events, Language, and Tone):
+The indicator also displays World Monitor tension scores computed independently from GDELT event exports:
 
 | Pair | Monitored Relationship |
 |------|----------------------|
 | USA ↔ Russia | Primary nuclear peer adversary |
 | Russia ↔ Ukraine | Active conflict zone |
 | USA ↔ China | Economic and military competition |
-| China ↔ Taiwan | Cross-strait relations |
 | USA ↔ Iran | Middle East regional tensions |
-| USA ↔ Venezuela | Western Hemisphere escalation and sanctions pressure |
 
 Each pair shows:
 
-- **Current tension score** (GDELT's normalized metric)
+- **Current tension score** (World Monitor's normalized score)
 - **7-day trend** (rising, falling, stable)
 - **Percentage change** from previous period
 
-This provides context for the activity levels. A spike at Pentagon locations during a rising China-Taiwan tension score carries different weight than during a quiet period.
+This provides context for the activity levels. See the country-pair tension section below for scoring and data-availability rules.
 
 ### Backed by endpoints
 
 | Surface | Endpoint | Notes |
 |---|---|---|
 | Pentagon Pizza Index + GDELT pairs | `GET /api/intelligence/v1/get-pizzint-status` | Reads pizza activity and, with `include_gdelt=true`, independently computed World Monitor tension pairs. |
+| GPS/GNSS interference | `GET /api/intelligence/v1/list-gps-interference` | Reads normalized GPSJam Redis keys, with optional `region` filtering. |
+| OREF alerts for CII context | `GET /api/intelligence/v1/list-oref-alerts` | Direct RPC for live or history OREF data; see [Israel Sirens](/panels/oref-sirens) for the panel relay path. |
+| Security advisories | `GET /api/intelligence/v1/list-security-advisories` | Redis-backed advisory feed used by CII boosts and floors. |
+| Country energy profile | `GET /api/intelligence/v1/get-country-energy-profile` | Country-level energy context for country deep dives and strategic risk analysis. |
+| Energy shock scenario | `GET /api/intelligence/v1/compute-energy-shock` | On-demand country + chokepoint product supply shock. |
 
 ### World Monitor country-pair tensions
 
@@ -210,16 +213,13 @@ The independent `gdelt:bulk:dyad-tension:v1` snapshot retains 90 completed days
 plus today's bucket, with a 92-day TTL and its own replay cursor. Health checks
 `seed-meta:gdelt:bulk:dyad-tension` at a 45-minute budget for the 15-minute worker.
 The API withholds snapshots older than 45 minutes even though history remains
-stored. Healthy ingestion does not mean that the 90-day scoring history is ready.
+stored. Responses that include tensions bypass HTTP caches, and the browser does
+not retain tension responses for cache fallback. Healthy ingestion does not mean
+that the 90-day scoring history is ready.
 The probe stays pending until the first successful data and metadata publication
 sets its durable activation marker. It then enforces freshness permanently.
 Pizza outages do not hide available tensions. Initial rollout builds history
 through normal worker runs; it does not backfill exports.
-| GPS/GNSS interference | `GET /api/intelligence/v1/list-gps-interference` | Reads normalized GPSJam Redis keys, with optional `region` filtering. |
-| OREF alerts for CII context | `GET /api/intelligence/v1/list-oref-alerts` | Direct RPC for live or history OREF data; see [Israel Sirens](/panels/oref-sirens) for the panel relay path. |
-| Security advisories | `GET /api/intelligence/v1/list-security-advisories` | Redis-backed advisory feed used by CII boosts and floors. |
-| Country energy profile | `GET /api/intelligence/v1/get-country-energy-profile` | Country-level energy context for country deep dives and strategic risk analysis. |
-| Energy shock scenario | `GET /api/intelligence/v1/compute-energy-shock` | On-demand country + chokepoint product supply shock. |
 
 ## Related Assets
 

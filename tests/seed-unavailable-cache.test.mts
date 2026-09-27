@@ -398,6 +398,7 @@ it('serves bounded dyad scores independently of a missing pizza payload', async 
   const body = await response.json();
   assert.equal(body.pizzint, undefined);
   assert.deepEqual(body.tensionPairs, [pair]);
+  assertNoStore(response);
   const pizzaOnly = await request('intelligence/v1/get-pizzint-status?include_gdelt=false');
   assert.deepEqual((await pizzaOnly.json()).tensionPairs, []);
 });

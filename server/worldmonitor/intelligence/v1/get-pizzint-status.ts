@@ -5,7 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { readCachedJson, logCacheReadError } from '../../../_shared/redis';
-import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
+import { markNoCacheResponse, markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import pairs from '../../../../shared/gdelt-tension-pairs.json';
 
 const SEED_KEY = 'intelligence:pizzint:seed:v1';
@@ -15,6 +15,9 @@ export async function getPizzintStatus(
   ctx: ServerContext,
   req: GetPizzintStatusRequest,
 ): Promise<GetPizzintStatusResponse> {
+  // Recheck the source clock on every request; the route's slow cache tier
+  // would otherwise keep numeric scores beyond the source freshness budget.
+  if (req.includeGdelt) markNoCacheResponse(ctx.request);
   let failed = false;
   async function readKey(key: string): Promise<unknown> {
     try {

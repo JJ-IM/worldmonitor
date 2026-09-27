@@ -1963,6 +1963,7 @@ const ON_DEMAND_KEYS = new Set([
   // writes the marker after the index and its seed-meta publish; absence is
   // pending until that first tick and strict afterward.
   'gdeltCountryArticles',
+  'gdeltDyadTension',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
@@ -2070,6 +2071,7 @@ const ACTIVATION_MARKERS = {
   // Written by scripts/seed-gdelt-bulk-materializer.mjs after the per-country
   // article index publishes with its seed-meta (#7748).
   gdeltCountryArticles: SEED_META.gdeltCountryArticles.activationKey,
+  gdeltDyadTension: SEED_META.gdeltDyadTension.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,
