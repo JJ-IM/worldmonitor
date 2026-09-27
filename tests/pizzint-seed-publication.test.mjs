@@ -436,3 +436,21 @@ test('all missing live signals preserve the previous payload and expiry', async 
   await advance(run);
   assert.deepEqual(run.state.cache, previous);
 });
+
+for (const currentPopularity of [0, undefined]) {
+  test(`PizzINT ${currentPopularity === 0 ? 'zero without a recoverable baseline' : 'missing live value'} is no data, not quiet`, async () => {
+    const run = harness();
+    await run.seed();
+    const previous = structuredClone(run.state.cache);
+    const missing = { ...validResponse.data[0], current_popularity: currentPopularity, percentage_of_usual: 0 };
+    run.state.source = { success: true, data: [missing] };
+    await advance(run);
+    assert.deepEqual(run.state.cache, previous, 'all missing signals must preserve expiry');
+    run.state.source.data.push({ ...validResponse.data[0], place_id: 'normal', current_popularity: 100, percentage_of_usual: 100 });
+    await advance(run);
+    const status = run.state.cache.get(payloadKey).data.data.pizzint;
+    assert.equal(status.locations[0].noLiveSignal, true);
+    assert.equal(status.locationsOpen, 1);
+    assert.equal(status.aggregateActivity, 100);
+  });
+}

@@ -8101,7 +8101,7 @@ function scorePizzintLocations(locations, previous, now) {
     const live = location.currentPopularity;
     const forecast = location.forecastPopularity;
     location.noLiveSignal = !Number.isFinite(live) || live < 0
-      || (!location.isClosedNow && live === 0 && forecast >= 20);
+      || (!location.isClosedNow && live === 0 && (forecast >= 20 || !(forecast > 0)));
     const delta = Number.isFinite(forecast) && forecast > 0 ? Math.max(0, live - forecast) : 0;
     const observedAt = Date.parse(location.recordedAt);
     const candidate = !location.isClosedNow && !location.noLiveSignal
