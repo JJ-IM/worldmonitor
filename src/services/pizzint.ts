@@ -57,6 +57,7 @@ function toLocation(proto: ProtoLocation): PizzIntLocation {
     address: proto.address,
     current_popularity: proto.currentPopularity,
     percentage_of_usual: proto.percentageOfUsual || null,
+    no_live_signal: proto.noLiveSignal,
     is_spike: proto.isSpike,
     spike_magnitude: typeof proto.spikeMagnitude === 'number' ? proto.spikeMagnitude : null,
     data_source: proto.dataSource,

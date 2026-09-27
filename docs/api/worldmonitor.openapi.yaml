@@ -45125,6 +45125,8 @@ components:
                     type: number
                     format: double
                     description: Longitude of the location.
+                noLiveSignal:
+                    type: boolean
             description: PizzintLocation represents a single monitored pizza location near the Pentagon.
         worldmonitor_intelligence_v1_GdeltTensionPair:
             type: object

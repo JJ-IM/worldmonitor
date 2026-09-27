@@ -76,6 +76,7 @@ export interface PizzintLocation {
   isClosedNow: boolean;
   lat: number;
   lng: number;
+  noLiveSignal: boolean;
 }
 
 export interface GdeltTensionPair {

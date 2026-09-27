@@ -1,4 +1,4 @@
-import type { PizzIntStatus, GdeltTensionPair } from '@/types';
+import type { PizzIntLocation, PizzIntStatus, GdeltTensionPair } from '@/types';
 import { t } from '@/services/i18n';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
@@ -35,7 +35,7 @@ export class PizzIntIndicator {
       ),
       h('div', { className: 'pizzint-footer' },
         h('span', { className: 'pizzint-source' },
-          t('components.pizzint.source'), ' ',
+          t('components.pizzint.indexSource'), ' ',
           h('a', { href: 'https://www.pizzint.watch', target: '_blank', rel: 'noopener' }, 'PizzINT'),
         ),
         h('span', { className: 'pizzint-updated' }),
@@ -126,22 +126,21 @@ export class PizzIntIndicator {
     );
   }
 
-  private getStatusClass(loc: { is_closed_now: boolean; is_spike: boolean; current_popularity: number }): string {
+  private getStatusClass(loc: PizzIntLocation): string {
     if (loc.is_closed_now) return 'closed';
+    if (loc.no_live_signal) return 'closed';
     if (loc.is_spike) return 'spike';
-    if (loc.current_popularity >= 70) return 'high';
-    if (loc.current_popularity >= 40) return 'elevated';
-    if (loc.current_popularity >= 15) return 'nominal';
-    return 'quiet';
+    return 'nominal';
   }
 
-  private getStatusLabel(loc: { is_closed_now: boolean; is_spike: boolean; current_popularity: number }): string {
+  private getStatusLabel(loc: PizzIntLocation): string {
     if (loc.is_closed_now) return t('components.pizzint.statusClosed');
-    if (loc.is_spike) return `${t('components.pizzint.statusSpike')} ${loc.current_popularity}%`;
-    if (loc.current_popularity >= 70) return `${t('components.pizzint.statusHigh')} ${loc.current_popularity}%`;
-    if (loc.current_popularity >= 40) return `${t('components.pizzint.statusElevated')} ${loc.current_popularity}%`;
-    if (loc.current_popularity >= 15) return `${t('components.pizzint.statusNominal')} ${loc.current_popularity}%`;
-    return `${t('components.pizzint.statusQuiet')} ${loc.current_popularity}%`;
+    if (loc.no_live_signal) return t('components.pizzint.statusNoData');
+    if (loc.percentage_of_usual === null) return t('components.pizzint.statusNoBaseline');
+    const deviation = Math.round(loc.percentage_of_usual - 100);
+    if (loc.is_spike) return `${t('components.pizzint.statusSpike')} +${deviation}%`;
+    if (Math.abs(deviation) <= 10) return t('components.pizzint.statusNormal');
+    return `${deviation > 0 ? '+' : ''}${deviation}% ${t('components.pizzint.vsUsual')}`;
   }
 
   private formatTimeAgo(date: Date): string {

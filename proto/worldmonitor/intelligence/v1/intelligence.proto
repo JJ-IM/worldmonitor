@@ -152,6 +152,7 @@ message PizzintLocation {
   double lat = 12;
   // Longitude of the location.
   double lng = 13;
+  bool no_live_signal = 14;
 }
 
 // GdeltTensionPair represents a bilateral tension score between two countries from GDELT.
