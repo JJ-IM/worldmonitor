@@ -26,6 +26,9 @@ const SOURCE_SNAPSHOTS_META_KEY = 'seed-meta:sanctions:source-snapshots';
 // OFAC's lists change slowly, and a Railway container can lose egress to
 // treasury.gov/S3 for several runs; 12h dropped ~20k OFAC entities on 2026-09-27.
 const SOURCE_RETAIN_MS = 48 * 60 * 60 * 1000;
+// Snapshots written before the 48h change carry fetchedAt + 12h; accept them and
+// move the deadline to 48h from the same fetch so a deploy cannot drop a live cohort.
+const LEGACY_SOURCE_RETAIN_MS = 12 * 60 * 60 * 1000;
 const SOURCE_SNAPSHOTS_TTL = 54 * 60 * 60; // retention + one 6h cron
 const SNAPSHOT_MAX_BYTES = 32 * 1024 * 1024;
 const CACHE_TTL = 18 * 60 * 60; // 18h — 3× live 6h cron; remains queryable after the 12h freshness alarm
@@ -89,12 +92,14 @@ function selectSanctionsSourceSnapshot(source, result, previous, now) {
     && Number.isSafeInteger(result.publishedAt) && result.publishedAt >= 0 && result.publishedAt <= now;
   const retained = previous?.version === 1
     && Number.isSafeInteger(previous.fetchedAt) && previous.fetchedAt > 0 && previous.fetchedAt <= now
-    && previous.retainedUntil === previous.fetchedAt + SOURCE_RETAIN_MS && now < previous.retainedUntil
+    && (previous.retainedUntil === previous.fetchedAt + SOURCE_RETAIN_MS
+      || previous.retainedUntil === previous.fetchedAt + LEGACY_SOURCE_RETAIN_MS)
+    && now < previous.fetchedAt + SOURCE_RETAIN_MS
     && Number.isSafeInteger(previous.publishedAt) && previous.publishedAt >= 0 && previous.publishedAt <= previous.fetchedAt
     && validSourceRecords(source, previous.records);
   const snapshot = valid
     ? { version: 1, fetchedAt: now, retainedUntil: now + SOURCE_RETAIN_MS, publishedAt: result.publishedAt, records: result.records }
-    : retained ? previous : null;
+    : retained ? { ...previous, retainedUntil: previous.fetchedAt + SOURCE_RETAIN_MS } : null;
   return {
     snapshot,
     health: {
@@ -757,8 +762,12 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     ENTITY_INDEX_META_KEY,
     COUNTRY_COUNTS_KEY,
     COUNTRY_COUNTS_META_KEY,
-    SOURCE_SNAPSHOTS_KEY,
-    SOURCE_SNAPSHOTS_META_KEY,
+  ],
+  // The private snapshots must outlive the 48h retention even when whole runs
+  // fail; the canonical 18h preservation TTL would shrink them.
+  preserveKeyTtls: [
+    { key: SOURCE_SNAPSHOTS_KEY, ttlSeconds: SOURCE_SNAPSHOTS_TTL },
+    { key: SOURCE_SNAPSHOTS_META_KEY, ttlSeconds: SOURCE_SNAPSHOTS_TTL },
   ],
   afterPublish: async (data, _ctx) => {
     // Write entity lookup index with seed-meta so health.js can monitor it.
