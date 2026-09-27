@@ -8096,14 +8096,14 @@ function pizzintLocationFromBestTime(venue, reply) {
   if (analysis.venue_live_busyness_available !== true || typeof live !== 'number' || !Number.isFinite(live)) return null;
   const forecast = analysis.venue_forecasted_busyness;
   const hasForecast = analysis.venue_forecast_busyness_available === true
-    && typeof forecast === 'number' && Number.isFinite(forecast) && forecast >= 0;
+    && typeof forecast === 'number' && Number.isFinite(forecast) && forecast > 0;
   const delta = hasForecast ? live - forecast : 0;
   return {
     placeId: venue.venueId,
     name: venue.name,
     address: typeof info.venue_address === 'string' ? info.venue_address : '',
     currentPopularity: live,
-    percentageOfUsual: hasForecast && forecast > 0 ? Math.round((live / forecast) * 100) : 0,
+    percentageOfUsual: hasForecast ? Math.round((live / forecast) * 100) : 0,
     isSpike: delta >= PIZZINT_BESTTIME_SPIKE_DELTA,
     spikeMagnitude: Math.max(0, delta),
     dataSource: 'besttime',

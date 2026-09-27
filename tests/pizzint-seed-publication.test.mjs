@@ -174,6 +174,7 @@ for (const [label, baseline] of [
   ['unavailable forecast', { venue_forecast_busyness_available: false, venue_forecasted_busyness: 0, venue_live_forecasted_delta: 60 }],
   ['missing forecast', { venue_forecast_busyness_available: true }],
   ['non-finite forecast', { venue_forecast_busyness_available: true, venue_forecasted_busyness: NaN }],
+  ['zero forecast', { venue_forecast_busyness_available: true, venue_forecasted_busyness: 0 }],
 ]) {
   test(`keeps live readings without inventing spikes from ${label}`, async () => {
     const { state, seed } = harness();
