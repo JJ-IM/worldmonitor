@@ -180,6 +180,33 @@ describe('sanctions source lifecycle', () => {
     }
   });
 
+  // A snapshot written by the 12h build must survive the deploy that introduces
+  // 48h, or the first failed run after deploy drops a still-live cohort.
+  it('accepts a 12h-era snapshot and moves its deadline to 48h from its original fetch', async () => {
+    const legacy = normalize((await publish()).data._sourceSnapshots);
+    for (const snapshot of Object.values(legacy)) snapshot.retainedUntil = snapshot.fetchedAt + 12 * 3600000;
+    const stored = { version: 1, encoding: 'gzip-base64', data: gzipSync(JSON.stringify(legacy)).toString('base64') };
+    for (const clock of [now + 6 * 3600000, now + 30 * 3600000]) {
+      const { data } = await publish({ successes: [], stored, clock });
+      assert.equal(data.totalCount, 82, `retained at +${(clock - now) / 3600000}h`);
+      for (const snapshot of Object.values(data._sourceSnapshots)) {
+        assert.equal(snapshot.fetchedAt, now);
+        assert.equal(snapshot.retainedUntil, now + RETAIN_MS);
+      }
+    }
+    const expired = await publish({ successes: [], stored, clock: now + RETAIN_MS });
+    assert.equal(expired.data.totalCount, 0);
+  });
+
+  it('preserves the private snapshot key at its own TTL when a whole run fails', async () => {
+    const { options } = await publish();
+    const ttls = Object.fromEntries(options.preserveKeyTtls.map(({ key, ttlSeconds }) => [key, ttlSeconds]));
+    for (const key of ['sanctions:source-snapshots:v1', 'seed-meta:sanctions:source-snapshots']) {
+      assert.ok(ttls[key] * 1000 > RETAIN_MS, `${key} must outlive the retention deadline`);
+      assert.ok(!options.preserveKeys.includes(key), `${key} must not also sit in the canonical-TTL cohort`);
+    }
+  });
+
   it('bounds decoding and rejects invalid compressed snapshots without losing a healthy sibling', async () => {
     for (const stored of [
       { version: 1, encoding: 'gzip-base64', data: 'not a gzip stream' },
