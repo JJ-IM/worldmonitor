@@ -35,6 +35,7 @@ function harness() {
         if (reply instanceof Error) throw reply;
         return reply ?? { ok: true, status: 200, json: async () => liveUnavailable };
       }
+      if (url.includes('dashboard-data') && state.source instanceof Error) throw state.source;
       return url.includes('dashboard-data') ? { ok: true, json: async () => state.source } : state.gdelt;
     },
     upstashSet: async (key, data, ttl) => {
@@ -232,4 +233,32 @@ test('marks a live venue that BestTime reports closed and keeps it out of the op
   assert.equal(pizzint.locationsOpen, 1);
   assert.equal(pizzint.aggregateActivity, 40);
   assert.equal(pizzint.locations[1].isClosedNow, true);
+});
+
+test('falls back to BestTime when the PizzINT request itself fails', async () => {
+  const { state, seed } = harness();
+  state.source = Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+  state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+  await seed();
+  const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
+  assert.ok(ids.length >= 4, 'a thrown PizzINT fetch still reaches the fallback');
+  state.besttime.set(ids[0], liveReading(50, 40));
+  state.now += 600_000;
+  await seed();
+  const { pizzint } = state.cache.get(payloadKey).data.data ?? state.cache.get(payloadKey).data;
+  assert.equal(pizzint.locationsMonitored, 1);
+});
+
+test('ignores a BestTime error response even when its body looks like a live reading', async () => {
+  const { state, seed } = harness();
+  state.source = emptyResponse;
+  state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
+  await seed();
+  const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
+  state.besttime.set(ids[0], { ...liveReading(90, 40), ok: false, status: 429 });
+  state.besttime.set(ids[1], liveReading(30, 35));
+  state.now += 600_000;
+  await seed();
+  const { pizzint } = state.cache.get(payloadKey).data.data ?? state.cache.get(payloadKey).data;
+  assert.deepEqual(pizzint.locations.map((l) => l.placeId), [ids[1]]);
 });

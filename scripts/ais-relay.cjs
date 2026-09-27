@@ -8125,6 +8125,7 @@ async function fetchPizzintBestTimeLocations(apiKey) {
         headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
         signal: AbortSignal.timeout(15_000),
       });
+      if (!resp.ok) continue;
       const location = pizzintLocationFromBestTime(venue, await resp.json());
       if (location) locations.push(location);
     } catch { /* one venue's failure never blocks the others */ }
@@ -8142,21 +8143,26 @@ async function seedPizzint() {
   pizzintSeedInFlight = true;
   const t0 = Date.now();
   try {
-    const resp = await fetch(PIZZINT_API, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
     let raw = null;
-    if (!resp.ok) {
-      console.warn(`[PizzINT] Seed failed: HTTP ${resp.status}`);
-    } else {
-      raw = await resp.json();
-      if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
-        const reason = !raw.success ? 'unsuccessful_response'
-          : !Array.isArray(raw.data) ? 'non_array_data' : 'empty_array';
-        console.warn(`[PizzINT] No data in API response (${reason}); preserving last good observation`);
-        raw = null;
+    try {
+      const resp = await fetch(PIZZINT_API, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        console.warn(`[PizzINT] Seed failed: HTTP ${resp.status}`);
+      } else {
+        raw = await resp.json();
+        if (!raw.success || !Array.isArray(raw.data) || raw.data.length === 0) {
+          const reason = !raw.success ? 'unsuccessful_response'
+            : !Array.isArray(raw.data) ? 'non_array_data' : 'empty_array';
+          console.warn(`[PizzINT] No data in API response (${reason}); preserving last good observation`);
+          raw = null;
+        }
       }
+    } catch (e) {
+      console.warn(`[PizzINT] Seed failed: ${e?.name || 'Error'}`);
+      raw = null;
     }
     const besttimeKey = raw ? '' : (process.env.BESTTIME_API_KEY_PRIVATE || '');
     const fallback = besttimeKey ? await fetchPizzintBestTimeLocations(besttimeKey) : null;
