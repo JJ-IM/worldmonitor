@@ -8081,11 +8081,12 @@ const PIZZINT_REDIS_KEY = 'intelligence:pizzint:seed:v1';
 const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
 // Fallback feed while PizzINT itself is down: BestTime live busyness for the
 // Pentagon-area venues PizzINT tracks. Registered 2026-09-27 via BestTime's
-// forecast endpoint. Domino's (2602 Columbia Pike) has too little visitor
-// volume to forecast; its id came from a live lookup by name and address on
-// 2026-09-28, so it is liveOnly: no baseline, and BestTime has no opening hours
-// for it (it reported Closed at lunchtime). Papa Johns (3400 Columbia Pike)
-// can neither be forecast nor resolved by the live lookup.
+// forecast endpoint; Papa Johns (1014 S Glebe Rd) on 2026-09-28, after the
+// earlier 3400 Columbia Pike address turned out to be the wrong branch.
+// Domino's (2602 Columbia Pike) has too little visitor volume to forecast; its
+// id came from a live lookup by name and address on 2026-09-28, so it is
+// liveOnly: no baseline, and BestTime has no opening hours for it (it reported
+// Closed at lunchtime).
 const PIZZINT_BESTTIME_LIVE_API = 'https://besttime.app/api/v1/forecasts/live';
 const PIZZINT_BESTTIME_TIMEOUT_MS = 30_000;
 const PIZZINT_BESTTIME_VENUES = [
@@ -8094,6 +8095,7 @@ const PIZZINT_BESTTIME_VENUES = [
   { venueId: 'ven_636b324a746c7a45666534526b347432794e41455465374a496843', name: 'Nighthawk Brewery & Pizza', lat: 38.8631637, lng: -77.0624806 },
   { venueId: 'ven_67314d44325f7774795356526b3474336d515f6e6962724a496843', name: 'Pizzato Pizza', lat: 38.8806865, lng: -77.089827 },
   { venueId: 'ven_5568597555684674506346526b34743271374b434136494a496843', name: "Domino's Pizza", lat: 38.8627267, lng: -77.0853943, liveOnly: true },
+  { venueId: 'ven_4d71755472304d50687962526b3474332d58614233306f4a496843', name: 'Papa Johns Pizza', lat: 38.8606821, lng: -77.0922272 },
 ];
 let pizzintSeedInFlight = false;
 

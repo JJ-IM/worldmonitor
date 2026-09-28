@@ -680,23 +680,23 @@ test('BestTime mixed poll counts reset without changing partial publication or h
   state.env.BESTTIME_API_KEY_PRIVATE = BESTTIME_KEY;
   await seed();
   const ids = state.besttimeCalls.map(({ url }) => new URL(url).searchParams.get('venue_id'));
-  assert.equal(ids.length, 5);
+  assert.equal(ids.length, 6);
   state.besttime.set(ids[0], liveReading(30, 35));
   state.besttime.set(ids[1], { ok: false, status: 429 });
   state.besttime.set(ids[2], { ok: true, json: async () => { throw new SyntaxError('secret'); } });
   state.logs.length = 0;
   await seed();
   assert.deepEqual(state.logs.find(args => String(args[0]).includes('BestTime fallback:')), [
-    '[PizzINT] BestTime fallback: 1/5 venues live; accepted=1 unavailable=2 invalid=0 http=1 timeout=0 transport=0 json=1',
+    '[PizzINT] BestTime fallback: 1/6 venues live; accepted=1 unavailable=3 invalid=0 http=1 timeout=0 transport=0 json=1',
   ]);
   assert.equal(state.cache.get(metaKey).data.recordCount, 1);
-  assert.equal(state.historyCalls.at(-1).locations.length, 3, 'the live venue and both unavailable venues');
+  assert.equal(state.historyCalls.at(-1).locations.length, 4, 'the live venue and the three unavailable venues');
   state.besttime.clear();
   state.warnings.length = 0;
   const previous = structuredClone(state.cache.get(payloadKey));
   await seed();
   assert.deepEqual(state.warnings.at(-1), [
-    '[PizzINT] BestTime fallback: no live readings (0/5 venues); accepted=0 unavailable=5 invalid=0 http=0 timeout=0 transport=0 json=0; preserving last good observation',
+    '[PizzINT] BestTime fallback: no live readings (0/6 venues); accepted=0 unavailable=6 invalid=0 http=0 timeout=0 transport=0 json=0; preserving last good observation',
   ]);
   assert.deepEqual(state.cache.get(payloadKey), previous);
 });
@@ -886,10 +886,10 @@ test('polls every venue concurrently with a 30-second timeout each', async () =>
   state.besttimeGate = new Promise((resolve) => { release = resolve; });
   const pending = seed();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(state.besttimeCalls.length, 5, 'every venue is requested before any reply arrives');
+  assert.equal(state.besttimeCalls.length, 6, 'every venue is requested before any reply arrives');
   release();
   await pending;
-  assert.deepEqual(state.timeouts.slice(-5), [30_000, 30_000, 30_000, 30_000, 30_000]);
+  assert.deepEqual(state.timeouts.slice(-6), [30_000, 30_000, 30_000, 30_000, 30_000, 30_000]);
 });
 
 for (const [where, reply] of [
@@ -904,7 +904,7 @@ for (const [where, reply] of [
     run.state.logs.length = 0;
     await advance(run);
     assert.deepEqual(run.state.logs.find(args => String(args[0]).includes('BestTime fallback:')), [
-      '[PizzINT] BestTime fallback: 1/5 venues live; accepted=1 unavailable=3 invalid=0 http=0 timeout=1 transport=0 json=0',
+      '[PizzINT] BestTime fallback: 1/6 venues live; accepted=1 unavailable=4 invalid=0 http=0 timeout=1 transport=0 json=0',
     ]);
   });
 }
@@ -944,7 +944,7 @@ test('venue placeholders carry numeric fields and no provider text', async () =>
   run.state.besttime.set(run.ids[1], new Error(`socket ${BESTTIME_KEY}`));
   run.state.besttime.set(run.ids[2], { ok: false, status: 409 });
   await advance(run);
-  assert.equal(run.status().locations.length, 5);
+  assert.equal(run.status().locations.length, 6);
   for (const location of run.status().locations.slice(1)) {
     assert.equal(location.currentPopularity, 0);
     assert.equal(location.percentageOfUsual, 0);
@@ -954,4 +954,22 @@ test('venue placeholders carry numeric fields and no provider text', async () =>
   }
   assert.doesNotMatch(JSON.stringify(run.state.cache.get(payloadKey)), /pri_test_secret_value|socket/);
   assert.equal(run.state.cache.get(metaKey).data.recordCount, 1, 'recordCount counts live readings, not placeholders');
+});
+
+const PAPA_JOHNS = 'ven_4d71755472304d50687962526b3474332d58614233306f4a496843';
+
+test('Papa Johns (1014 S Glebe Rd) is a forecast venue: baseline, spikes, and BestTime closed hours apply', async () => {
+  const run = await besttimeHarness([[40, 40]]);
+  assert.equal(run.ids[5], PAPA_JOHNS);
+  run.state.besttime.set(PAPA_JOHNS, liveReading(90, 30));
+  for (let tick = 0; tick < 3; tick++) await advance(run);
+  const papaJohns = run.status().locations.find(l => l.placeId === PAPA_JOHNS);
+  assert.equal(papaJohns.name, 'Papa Johns Pizza');
+  assert.equal(papaJohns.hasBaseline, true);
+  assert.equal(papaJohns.percentageOfUsual, 300);
+  assert.equal(papaJohns.isSpike, true, 'three sustained readings at 3x usual');
+  const closedReply = { ok: true, status: 200, json: async () => ({ ...liveUnavailable, venue_info: { venue_open: 'Closed' } }) };
+  run.state.besttime.set(PAPA_JOHNS, closedReply);
+  await advance(run);
+  assert.equal(run.status().locations.find(l => l.placeId === PAPA_JOHNS).isClosedNow, true);
 });
