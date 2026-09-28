@@ -8081,12 +8081,12 @@ const PIZZINT_REDIS_KEY = 'intelligence:pizzint:seed:v1';
 const PIZZINT_API = 'https://www.pizzint.watch/api/dashboard-data';
 // Fallback feed while PizzINT itself is down: BestTime live busyness for the
 // Pentagon-area venues PizzINT tracks. Registered 2026-09-27 via BestTime's
-// forecast endpoint; Papa Johns (1014 S Glebe Rd) on 2026-09-28, after the
-// earlier 3400 Columbia Pike address turned out to be the wrong branch.
-// Domino's (2602 Columbia Pike) has too little visitor volume to forecast; its
-// id came from a live lookup by name and address on 2026-09-28, so it is
-// liveOnly: no baseline, and BestTime has no opening hours for it (it reported
-// Closed at lunchtime).
+// forecast endpoint; Papa Johns (2440 Wilson Blvd) on 2026-09-28, the branch
+// PizzINT tracks (3400 Columbia Pike was a wrong address). Domino's
+// (3535 S Ball St) has too little visitor volume to forecast; its id came from
+// a live lookup by name and address on 2026-09-28, so it is liveOnly: no
+// baseline, and without a forecast BestTime has no opening hours for it (the
+// Columbia Pike branch reported Closed at lunchtime).
 const PIZZINT_BESTTIME_LIVE_API = 'https://besttime.app/api/v1/forecasts/live';
 const PIZZINT_BESTTIME_TIMEOUT_MS = 30_000;
 const PIZZINT_BESTTIME_VENUES = [
@@ -8094,8 +8094,8 @@ const PIZZINT_BESTTIME_VENUES = [
   { venueId: 'ven_41336f327a61637672416e526b34743375584c655132344a496843', name: 'District Pizza Palace', lat: 38.8527414, lng: -77.0531408 },
   { venueId: 'ven_636b324a746c7a45666534526b347432794e41455465374a496843', name: 'Nighthawk Brewery & Pizza', lat: 38.8631637, lng: -77.0624806 },
   { venueId: 'ven_67314d44325f7774795356526b3474336d515f6e6962724a496843', name: 'Pizzato Pizza', lat: 38.8806865, lng: -77.089827 },
-  { venueId: 'ven_5568597555684674506346526b34743271374b434136494a496843', name: "Domino's Pizza", lat: 38.8627267, lng: -77.0853943, liveOnly: true },
-  { venueId: 'ven_4d71755472304d50687962526b3474332d58614233306f4a496843', name: 'Papa Johns Pizza', lat: 38.8606821, lng: -77.0922272 },
+  { venueId: 'ven_4d2d7454795a336a723962526b3474784b54634d7352694a496843', name: "Domino's Pizza", lat: 38.8430908, lng: -77.0507832, liveOnly: true },
+  { venueId: 'ven_493038537a313933526546526b347432696f537a5538694a496843', name: 'Papa Johns Pizza', lat: 38.8903112, lng: -77.0883773 },
 ];
 let pizzintSeedInFlight = false;
 

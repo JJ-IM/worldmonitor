@@ -876,7 +876,7 @@ test('a stale-only publication with no live history leaves no quiet allowance', 
   assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat, 'recordCount > 0 must not resurrect the legacy fallback');
 });
 
-const DOMINOS = 'ven_5568597555684674506346526b34743271374b434136494a496843';
+const DOMINOS = 'ven_4d2d7454795a336a723962526b3474784b54634d7352694a496843';
 
 test('polls every venue concurrently with a 30-second timeout each', async () => {
   const { state, seed } = harness();
@@ -956,9 +956,9 @@ test('venue placeholders carry numeric fields and no provider text', async () =>
   assert.equal(run.state.cache.get(metaKey).data.recordCount, 1, 'recordCount counts live readings, not placeholders');
 });
 
-const PAPA_JOHNS = 'ven_4d71755472304d50687962526b3474332d58614233306f4a496843';
+const PAPA_JOHNS = 'ven_493038537a313933526546526b347432696f537a5538694a496843';
 
-test('Papa Johns (1014 S Glebe Rd) is a forecast venue: baseline, spikes, and BestTime closed hours apply', async () => {
+test('Papa Johns (2440 Wilson Blvd) is a forecast venue: baseline, spikes, and BestTime closed hours apply', async () => {
   const run = await besttimeHarness([[40, 40]]);
   assert.equal(run.ids[5], PAPA_JOHNS);
   run.state.besttime.set(PAPA_JOHNS, liveReading(90, 30));
