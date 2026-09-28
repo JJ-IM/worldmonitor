@@ -622,7 +622,7 @@ async function awaitFirstCandidates(): Promise<void> {
   if (!pending) return;
   let timer: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
-    pending,
+    pending.catch(() => {}),
     new Promise<void>((resolve) => { timer = setTimeout(resolve, FIRST_CANDIDATES_WAIT_MS); }),
   ]);
   clearTimeout(timer);
@@ -639,6 +639,9 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
     if (!isTracking && isAisConfigured()) {
       initMilitaryVesselStream();
     }
+    // Start the roster fetch before the candidate wait so the two overlap.
+    const usniPending = fetchUSNIFleetReport();
+    usniPending.catch(() => {}); // Rejection is handled by the merge below.
     await awaitFirstCandidates();
 
     // Clean up old data and take the current tracking snapshot. The breaker
@@ -651,7 +654,7 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
 
     // Merge with USNI Fleet Tracker data (non-blocking)
     try {
-      const usniReport = await fetchUSNIFleetReport();
+      const usniReport = await usniPending;
       if (usniReport && usniReport.vessels.length > 0) {
         const merged = mergeUSNIWithAIS(vessels, usniReport, aisClusters);
         return limitVesselSnapshot(merged);

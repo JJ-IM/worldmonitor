@@ -114,12 +114,33 @@ test('a candidate poll that never settles does not hold the snapshot', async (t)
   runtime.__aisRegister = () => new Promise<void>(() => {});
   const harness = await loadHarness();
 
-  const pending = harness.fetchMilitaryVessels();
-  await new Promise<void>((resolveTick) => setImmediate(resolveTick));
-  t.mock.timers.tick(8_000);
+  let settled = false;
+  const pending = harness.fetchMilitaryVessels().then((snapshot) => { settled = true; return snapshot; });
+  const flush = () => new Promise<void>((resolveTick) => setImmediate(resolveTick));
+  await flush();
+  t.mock.timers.tick(7_999);
+  await flush();
+  assert.equal(settled, false, 'the snapshot waits for candidates until the cap');
+  t.mock.timers.tick(1);
   const { vessels } = await pending;
 
   assert.deepEqual(vessels, []);
+  harness.disconnectMilitaryVesselStream();
+});
+
+test('a rejected candidate poll does not break later snapshots', async () => {
+  let deliver!: (data: AisPosition) => void;
+  runtime.__aisRegister = (callback) => {
+    deliver = callback;
+    return Promise.reject(new Error('relay down'));
+  };
+  const harness = await loadHarness();
+
+  assert.deepEqual((await harness.fetchMilitaryVessels()).vessels, []);
+  deliver(lawEnforcementVessel);
+  const { vessels } = await harness.fetchMilitaryVessels();
+
+  assert.deepEqual(vessels.map((v) => v.mmsi), ['366999001']);
   harness.disconnectMilitaryVesselStream();
 });
 
