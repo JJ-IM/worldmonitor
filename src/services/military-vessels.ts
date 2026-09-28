@@ -26,9 +26,13 @@ const MAX_MILITARY_VESSELS = 500;
 
 type VesselSnapshot = { vessels: MilitaryVessel[]; clusters: MilitaryVesselCluster[] };
 
-// Carriers first, then dark/unusual vessels, then recency. IDs make ties stable.
+// Carriers first, then hull-numbered ships (USNI roster and known naval
+// vessels), then dark/unusual vessels, then recency. Without the hull rank,
+// fresher AIS tugs and pilot boats displace roster warships dated to the last
+// USNI report. IDs make ties stable.
 function compareVesselPriority(a: MilitaryVessel, b: MilitaryVessel): number {
   return Number(b.vesselType === 'carrier') - Number(a.vesselType === 'carrier')
+    || Number(Boolean(b.hullNumber)) - Number(Boolean(a.hullNumber))
     || Number(Boolean(b.isDark || b.isInteresting)) - Number(Boolean(a.isDark || a.isInteresting))
     || (b.lastAisUpdate.getTime() || 0) - (a.lastAisUpdate.getTime() || 0)
     || a.id.localeCompare(b.id);
@@ -64,6 +68,10 @@ function isStaleAisMilitaryOpsClaim(v: MilitaryVessel): boolean {
 
 // Tracking state
 let isTracking = false;
+// Settles when the first AIS candidate snapshot has been processed (#8634).
+let firstCandidates: Promise<void> | null = null;
+// A slow relay must not hold back the USNI roster or the flights loaded beside it.
+const FIRST_CANDIDATES_WAIT_MS = 8_000;
 let messageCount = 0;
 let historyCleanupIntervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -578,7 +586,7 @@ export function initMilitaryVesselStream(): void {
   breaker.clearMemoryCache();
 
   // Register callback with shared AIS stream
-  registerAisCallback(processAisPosition);
+  firstCandidates = registerAisCallback(processAisPosition);
   isTracking = true;
 
   // Ensure AIS stream is running
@@ -595,6 +603,7 @@ export function disconnectMilitaryVesselStream(): void {
 
   unregisterAisCallback(processAisPosition);
   isTracking = false;
+  firstCandidates = null;
 }
 
 /**
@@ -608,6 +617,18 @@ export function getMilitaryVesselStatus(): { connected: boolean; vessels: number
   };
 }
 
+async function awaitFirstCandidates(): Promise<void> {
+  const pending = firstCandidates;
+  if (!pending) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([
+    pending,
+    new Promise<void>((resolve) => { timer = setTimeout(resolve, FIRST_CANDIDATES_WAIT_MS); }),
+  ]);
+  clearTimeout(timer);
+  if (firstCandidates === pending) firstCandidates = null;
+}
+
 /**
  * Main function to get military vessels
  */
@@ -618,6 +639,7 @@ export async function fetchMilitaryVessels(): Promise<VesselSnapshot> {
     if (!isTracking && isAisConfigured()) {
       initMilitaryVesselStream();
     }
+    await awaitFirstCandidates();
 
     // Clean up old data and take the current tracking snapshot. The breaker
     // owns the single 30-second refresh cadence for this payload.

@@ -123,6 +123,7 @@ let inFlight = false;
 let isPolling = false;
 let lastPollAt = 0;
 let lastCandidateSequence = 0;
+let firstCandidatePoll: Promise<void> | null = null;
 
 let latestDisruptions: AisDisruptionEvent[] = [];
 let latestDensity: AisDensityZone[] = [];
@@ -286,10 +287,10 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
   }
 }
 
-function startPolling(): void {
-  if (isPolling || !isAisConfigured()) return;
+function startPolling(): Promise<void> | null {
+  if (isPolling || !isAisConfigured()) return null;
   isPolling = true;
-  void pollSnapshot(true);
+  const firstPoll = pollSnapshot(true);
   pollLoop?.stop();
   pollLoop = startSmartPollLoop(({ signal }) => pollSnapshot(false, signal), {
     intervalMs: SNAPSHOT_POLL_INTERVAL_MS,
@@ -298,13 +299,27 @@ function startPolling(): void {
     refreshOnVisible: true,
     runImmediately: false,
   });
+  return firstPoll;
 }
 
 // ---- Exported Functions ----
 
-export function registerAisCallback(callback: AisCallback): void {
+/**
+ * Resolves when the first candidate poll finishes (delivered or failed), so a
+ * consumer can build its first view from AIS contacts instead of an empty set.
+ */
+export function registerAisCallback(callback: AisCallback): Promise<void> {
+  const firstCallback = positionCallbacks.size === 0;
   positionCallbacks.add(callback);
-  startPolling();
+  const started = startPolling();
+  if (started) {
+    firstCandidatePoll = started;
+  } else if (firstCallback && isAisConfigured()) {
+    // Polling that began with no callbacks requested density only. Waiting for
+    // the next tick left the vessel layer USNI-only for minutes (#8634).
+    firstCandidatePoll = pollSnapshot(true);
+  }
+  return firstCandidatePoll ?? Promise.resolve();
 }
 
 export function unregisterAisCallback(callback: AisCallback): void {
@@ -312,6 +327,7 @@ export function unregisterAisCallback(callback: AisCallback): void {
   if (positionCallbacks.size === 0) {
     lastCallbackTimestampByMmsi.clear();
     lastCandidateSequence = 0;
+    firstCandidatePoll = null;
   }
 }
 
