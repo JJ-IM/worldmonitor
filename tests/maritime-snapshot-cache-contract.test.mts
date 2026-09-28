@@ -123,6 +123,7 @@ type Harness = {
   pollSnapshot(force?: boolean): Promise<void>;
   registerAisCallback(callback: (data: { mmsi: string }) => void): Promise<void>;
   initAisStream(): void;
+  getAisStatus(): { connected: boolean; vessels: number; messages: number };
   unregisterAisCallback(callback: (data: { mmsi: string }) => void): void;
   disconnectAisStream(): void;
 };
@@ -130,7 +131,7 @@ type Harness = {
 before(async () => {
   const result = await build({
     stdin: {
-      contents: `export { fetchSnapshotPayload, pollSnapshot, registerAisCallback, unregisterAisCallback, initAisStream, disconnectAisStream } from './src/services/maritime/index.ts';`,
+      contents: `export { fetchSnapshotPayload, pollSnapshot, registerAisCallback, unregisterAisCallback, initAisStream, getAisStatus, disconnectAisStream } from './src/services/maritime/index.ts';`,
       loader: 'ts',
       resolveDir: root,
       sourcefile: 'maritime-cache-runtime-entry.ts',
@@ -219,6 +220,26 @@ test('the first callback fetches candidates immediately when polling already run
   await harness.registerAisCallback(secondCallback);
   assert.deepEqual(runtime.__maritimeRequests, [false, true], 'later callbacks share the running candidate poll');
   harness.unregisterAisCallback(secondCallback);
+  harness.unregisterAisCallback(callback);
+  harness.disconnectAisStream();
+});
+
+test('a density poll that finishes after a newer candidate poll does not overwrite shared status', async () => {
+  let releaseDensity!: (value: SnapshotResponse) => void;
+  const pendingDensity = new Promise<SnapshotResponse>((resolveResponse) => { releaseDensity = resolveResponse; });
+  setup([pendingDensity, response(9, true)]);
+  const harness = await loadHarness();
+  harness.initAisStream();
+  await settleBackgroundWork();
+
+  const callback = () => {};
+  await harness.registerAisCallback(callback);
+  assert.equal(harness.getAisStatus().messages, 9);
+
+  releaseDensity(response(7));
+  await settleBackgroundWork();
+
+  assert.equal(harness.getAisStatus().messages, 9, 'the older density response must not replace newer status');
   harness.unregisterAisCallback(callback);
   harness.disconnectAisStream();
 });

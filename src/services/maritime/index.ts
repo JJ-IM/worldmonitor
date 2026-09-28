@@ -124,6 +124,8 @@ let isPolling = false;
 let lastPollAt = 0;
 let lastCandidateSequence = 0;
 let firstCandidatePoll: Promise<void> | null = null;
+let lastStartedPollId = 0;
+let lastAppliedPollId = 0;
 
 let latestDisruptions: AisDisruptionEvent[] = [];
 let latestDensity: AisDensityZone[] = [];
@@ -257,15 +259,21 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
   if (signal?.aborted) return;
 
   inFlight = true;
+  // A forced candidate poll can overlap a density poll. Only the most recently
+  // started poll that has finished may replace the shared state.
+  const pollId = ++lastStartedPollId;
   try {
     const includeCandidates = shouldIncludeCandidates();
     const snapshot = await fetchSnapshotPayload(includeCandidates, signal);
     if (!snapshot) throw new Error('Invalid snapshot payload');
 
-    latestDisruptions = snapshot.disruptions;
-    latestDensity = snapshot.density;
-    latestStatus = snapshot.status;
-    lastPollAt = Date.now();
+    if (pollId > lastAppliedPollId) {
+      lastAppliedPollId = pollId;
+      latestDisruptions = snapshot.disruptions;
+      latestDensity = snapshot.density;
+      latestStatus = snapshot.status;
+      lastPollAt = Date.now();
+    }
 
     if (
       includeCandidates
@@ -281,7 +289,7 @@ async function pollSnapshot(force = false, signal?: AbortSignal): Promise<void> 
       dataFreshness.recordUpdate('ais', itemCount > 0 ? itemCount : latestStatus.vessels);
     }
   } catch {
-    latestStatus.connected = false;
+    if (pollId > lastAppliedPollId) latestStatus.connected = false;
   } finally {
     inFlight = false;
   }
