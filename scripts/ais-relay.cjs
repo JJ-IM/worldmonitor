@@ -8143,7 +8143,8 @@ function pizzintLocationFromBestTime(venue, reply) {
   const live = analysis.venue_live_busyness;
   if (analysis.venue_live_busyness_available !== true || typeof live !== 'number' || !Number.isFinite(live)) return null;
   const forecast = analysis.venue_forecasted_busyness;
-  const hasForecast = analysis.venue_forecast_busyness_available === true
+  // A live-only venue never takes a baseline, even if BestTime starts sending one.
+  const hasForecast = !venue.liveOnly && analysis.venue_forecast_busyness_available === true
     && typeof forecast === 'number' && Number.isFinite(forecast) && forecast > 0;
   return {
     placeId: venue.venueId,

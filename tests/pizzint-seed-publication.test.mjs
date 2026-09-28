@@ -973,3 +973,15 @@ test('Papa Johns (2440 Wilson Blvd) is a forecast venue: baseline, spikes, and B
   await advance(run);
   assert.equal(run.status().locations.find(l => l.placeId === PAPA_JOHNS).isClosedNow, true);
 });
+
+test('a live-only venue ignores any forecast BestTime returns, so it never gains a baseline or spikes', async () => {
+  const run = await besttimeHarness([[40, 40]]);
+  run.state.besttime.set(DOMINOS, liveReading(95, 30));
+  for (let tick = 0; tick < 3; tick++) await advance(run);
+  const dominos = run.status().locations.find(l => l.placeId === DOMINOS);
+  assert.equal(dominos.forecastPopularity, 0);
+  assert.equal(dominos.percentageOfUsual, 0);
+  assert.equal(dominos.hasBaseline, false);
+  assert.equal(dominos.isSpike, false);
+  assert.equal(run.status().activeSpikes, 0);
+});
