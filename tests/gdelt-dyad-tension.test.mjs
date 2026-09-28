@@ -59,7 +59,8 @@ test('trend uses unrounded change and strict plus/minus 10 percent thresholds', 
 
 // Self-repair: rebuild incomplete past days from the source exports so a
 // partial first day or a missed cohort cannot block scoring for 90 days.
-const { planDyadRepair, dyadDayExportTimestamps, rebuildDyadDay, replaceDyadDays } = await import('../scripts/_gdelt-dyad-tension.mjs');
+const dyadModule = await import('../scripts/_gdelt-dyad-tension.mjs');
+const { planDyadRepair, dyadDayExportTimestamps, rebuildDyadDay, replaceDyadDays } = dyadModule;
 const repairNow = Date.parse('2026-09-28T17:30:00Z');
 const dayOf = (i) => new Date(repairNow - i * 86400000).toISOString().slice(0, 10);
 const cohortBatches = (date, count = 96, conflict = 1) => dyadDayExportTimestamps(date).slice(0, count)
@@ -126,6 +127,29 @@ test('a replacement is ignored for days the live merge still owns or the window 
   const old = dayOf(91);
   const late = { cursor: '20260928171500', days: {} };
   assert.deepEqual(replaceDyadDays(late, { [old]: rebuildDyadDay(old, cohortBatches(old)) }, repairNow).days, {});
+});
+
+test('a day that recently failed repair backs off, then becomes eligible again', () => {
+  const { DYAD_REPAIR_BACKOFF_MS } = dyadModule;
+  const failedAt = repairNow - 60_000;
+  const snapshot = { cursor: '20260928171500', days: {}, repairFailures: { '2026-09-27': failedAt } };
+  assert.ok(!planDyadRepair(snapshot, repairNow, 90).includes('2026-09-27'), 'inside the backoff it is skipped');
+  assert.equal(planDyadRepair(snapshot, repairNow, 1)[0], dayOf(2), 'the next older day takes the slot');
+  const later = failedAt + DYAD_REPAIR_BACKOFF_MS;
+  assert.equal(planDyadRepair(snapshot, later, 1)[0], '2026-09-27', 'after the backoff it is retried');
+});
+
+test('repair failures are recorded, cleared on success, and pruned to repairable days', () => {
+  const snapshot = { cursor: '20260928171500', days: {}, repairFailures: {
+    '2026-09-27': repairNow - 1000,
+    [dayOf(2)]: repairNow - 2000,
+    [dayOf(95)]: repairNow - 3000,
+  } };
+  const rebuilt = { '2026-09-27': rebuildDyadDay('2026-09-27', cohortBatches('2026-09-27')) };
+  const next = replaceDyadDays(snapshot, rebuilt, repairNow, { [dayOf(3)]: repairNow });
+  assert.deepEqual(next.repairFailures, { [dayOf(2)]: repairNow - 2000, [dayOf(3)]: repairNow });
+  assert.equal(replaceDyadDays({ cursor: '20260928171500', days: {} }, {}, repairNow).repairFailures, undefined,
+    'no failure record is added when nothing failed');
 });
 
 test('once repair completes the 90-day window, every pair with enough events is scored', () => {

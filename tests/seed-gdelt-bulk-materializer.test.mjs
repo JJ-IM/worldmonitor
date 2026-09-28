@@ -1156,8 +1156,12 @@ describe('dyad history repair', async () => {
       }
     }
     const requests = [];
-    const fetchImpl = fakeBulkFetch(`${lines.join('\n')}\n`, files);
-    return { requests, fetchImpl: async (url, init) => { requests.push(String(url)); return fetchImpl(url, init); } };
+    const manifestText = lines.length ? `${lines.join('\n')}\n` : '';
+    const fetchImpl = fakeBulkFetch(manifestText, files);
+    return {
+      requests, files, manifestText,
+      fetchImpl: async (url, init) => { requests.push(String(url)); return fetchImpl(url, init); },
+    };
   }
 
   it('rebuilds a missing day from its 96 verified exports', async () => {
@@ -1173,7 +1177,8 @@ describe('dyad history repair', async () => {
     const source = repairSource(['2026-09-27'], { count: 95 });
     const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl: source.fetchImpl, maxDays: 1 });
     assert.deepEqual(result.days, {});
-    assert.deepEqual(result.outcomes, { upstream_gap: 1 });
+    assert.deepEqual(result.outcomes, { upstream_gap: 1, manifest_short: 1 }, 'the walk moves on to 2026-09-26, which predates the tail');
+    assert.deepEqual(result.failures, {}, 'a gap is not a failed download');
     assert.equal(source.requests.length, 1, 'only the manifest tail');
   });
 
@@ -1183,6 +1188,135 @@ describe('dyad history repair', async () => {
     assert.equal(result.days['2026-09-27'], undefined);
     assert.equal(result.days['2026-09-26'].cohorts, 96);
     assert.deepEqual(result.outcomes, { verify_failed: 1, repaired: 1 });
+  });
+
+  it('an upstream-gap day does not use the download budget', async () => {
+    const gap = repairSource(['2026-09-27'], { count: 95 });
+    const full = repairSource(['2026-09-26']);
+    const requests = [];
+    let first = true;
+    const fetchImpl = async (url, init) => {
+      requests.push(String(url));
+      if (first) {
+        first = false;
+        // One manifest carrying both days: the gap day and the complete day.
+        const manifest = [gap, full].map(s => s.manifestText).join('');
+        return new Response(Buffer.from(manifest), { status: 206, headers: {
+          'content-length': String(Buffer.byteLength(manifest)),
+          'content-range': `bytes 0-${Buffer.byteLength(manifest) - 1}/${Buffer.byteLength(manifest)}`,
+        } });
+      }
+      const body = full.files.get(String(url));
+      return new Response(body, { status: 200, headers: { 'content-length': String(body.length) } });
+    };
+    const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl, maxDays: 1 });
+    assert.deepEqual(Object.keys(result.days), ['2026-09-26']);
+    assert.deepEqual(result.outcomes, { upstream_gap: 1, repaired: 1 });
+    assert.equal(requests.length, 97);
+  });
+
+  it('a day that fails verification backs off so older days are repaired, then is retried', async () => {
+    const { DYAD_REPAIR_BACKOFF_MS } = await import('../scripts/_gdelt-dyad-tension.mjs');
+    const failures = {};
+    const tick1 = await repairDyadHistory({
+      snapshot: live, nowMs: repairNow, maxDays: 1, failures,
+      fetchImpl: repairSource(['2026-09-26', '2026-09-27'], { corrupt: '20260927120000' }).fetchImpl,
+    });
+    assert.deepEqual(tick1.outcomes, { verify_failed: 1 });
+    assert.deepEqual(tick1.failures, { '2026-09-27': repairNow });
+
+    const withFailure = { ...live, repairFailures: tick1.failures };
+    const tick2 = await repairDyadHistory({
+      snapshot: withFailure, nowMs: repairNow + 15 * 60_000, maxDays: 1,
+      fetchImpl: repairSource(['2026-09-26', '2026-09-27'], { corrupt: '20260927120000' }).fetchImpl,
+    });
+    assert.deepEqual(Object.keys(tick2.days), ['2026-09-26'], 'the failing day no longer holds the slot');
+
+    const retry = repairSource(['2026-09-26', '2026-09-27']);
+    const tick3 = await repairDyadHistory({
+      snapshot: withFailure, nowMs: repairNow + DYAD_REPAIR_BACKOFF_MS, maxDays: 1, fetchImpl: retry.fetchImpl,
+    });
+    assert.deepEqual(Object.keys(tick3.days), ['2026-09-27'], 'after the backoff the day is retried');
+  });
+
+  it('a live tick persists repair failures and clears them on success', async () => {
+    const tick = (repair, previousDyads) => fetchMaterializedGdelt({
+      _now: () => Date.parse('2026-07-30T12:05:00Z'),
+      _readSnapshot: async key => key === 'gdelt:bulk:dyad-tension:v1' ? previousDyads : null,
+      _fetchFiles: async () => materializationFiles(),
+      _repairDyadHistory: repair,
+    });
+    const failed = await tick(async ({ failures }) => {
+      failures['2026-07-29'] = Date.parse('2026-07-30T12:05:00Z');
+      return { days: {}, outcomes: { verify_failed: 1 } };
+    }, null);
+    assert.deepEqual(failed._dyads.repairFailures, { '2026-07-29': Date.parse('2026-07-30T12:05:00Z') });
+    let seen;
+    const recovered = await tick(async ({ snapshot }) => {
+      seen = snapshot.repairFailures;
+      return { days: { '2026-07-29': { cohorts: 96, pairs: {} } }, outcomes: { repaired: 1 } };
+    }, failed._dyads);
+    assert.deepEqual(seen, failed._dyads.repairFailures, 'the next tick plans against the stored failures');
+    assert.equal(recovered._dyads.repairFailures, undefined);
+  });
+
+  it('aborts in-flight downloads and starts no new one once the signal fires', async () => {
+    const source = repairSource(['2026-09-27']);
+    const controller = new AbortController();
+    const signals = [];
+    let downloads = 0;
+    const fetchImpl = async (url, init) => {
+      if (String(url).endsWith('masterfilelist.txt')) return source.fetchImpl(url, init);
+      downloads += 1;
+      signals.push(init.signal);
+      return new Promise((_, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+    };
+    const pending = repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl, maxDays: 1, signal: controller.signal });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const started = downloads;
+    assert.equal(started, 4, 'the concurrency limit of downloads is in flight');
+    const abortedAt = Date.now();
+    controller.abort();
+    const result = await pending;
+    assert.ok(Date.now() - abortedAt < 2_000, 'the abort ends the downloads, not their 30 s request timeout');
+    // The other workers keep draining the queue after the first rejection, so
+    // give them time to start one before counting.
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(downloads, started, 'no queued download starts after the abort');
+    assert.ok(signals.every(signal => signal.aborted && signal.reason?.name === 'AbortError'),
+      'every in-flight download sees the budget abort');
+    assert.deepEqual(result.days, {});
+    assert.deepEqual(result.outcomes, { over_budget: 1 });
+    assert.deepEqual(result.failures, {}, 'an abort is not the day\'s fault');
+  });
+
+  it('a download that completes after the abort does not start the next one', async () => {
+    const source = repairSource(['2026-09-27']);
+    const controller = new AbortController();
+    let downloads = 0;
+    const fetchImpl = async (url, init) => {
+      if (String(url).endsWith('masterfilelist.txt')) return source.fetchImpl(url, init);
+      downloads += 1;
+      // The budget runs out while this download is in flight, but its body
+      // still arrives (a transport that finishes before noticing the abort).
+      if (downloads === 1) controller.abort();
+      const body = source.files.get(String(url));
+      return new Response(body, { status: 200, headers: { 'content-length': String(body.length) } });
+    };
+    const result = await repairDyadHistory({ snapshot: live, nowMs: repairNow, fetchImpl, maxDays: 1, signal: controller.signal });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(downloads, 1, 'no download starts once the signal has fired');
+    assert.deepEqual(result.outcomes, { over_budget: 1 });
+    assert.deepEqual(result.failures, {});
+  });
+
+  it('the live tick aborts its repair when the budget runs out', async () => {
+    let signal;
+    await liveTick({
+      _repairDyadHistory: (opts) => { signal = opts.signal; return new Promise(() => {}); },
+      _dyadRepairBudgetMs: 20,
+    });
+    assert.equal(signal?.aborted, true);
   });
 
   it('starts no new day once its deadline has passed', async () => {
@@ -1211,7 +1345,7 @@ describe('dyad history repair', async () => {
     for (let i = 1; i <= 90; i++) days[new Date(repairNow - i * 86_400_000).toISOString().slice(0, 10)] = { cohorts: 96, pairs: {} };
     const source = repairSource([]);
     const result = await repairDyadHistory({ snapshot: { ...live, days }, nowMs: repairNow, fetchImpl: source.fetchImpl });
-    assert.deepEqual(result, { days: {}, outcomes: {} });
+    assert.deepEqual(result, { days: {}, outcomes: {}, failures: {} });
     assert.equal(source.requests.length, 0);
   });
 

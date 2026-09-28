@@ -67,16 +67,31 @@ export function dyadDayExportTimestamps(date) {
     `${compact}${String(Math.floor(i / 4)).padStart(2, '0')}${String((i % 4) * 15).padStart(2, '0')}00`);
 }
 
+// A day whose repair failed (verification or download) waits this long before
+// it is retried, so it cannot hold the per-run download budget and starve
+// older days. Six hours is 24 runs: a transient storage or network fault has
+// cleared by then, and a persistently bad day costs at most four downloads a day.
+export const DYAD_REPAIR_BACKOFF_MS = 6 * 60 * 60 * 1000;
+
 // Days that stop scoreDyads (missing, or not exactly 96 cohorts) and that the
 // live merge can no longer touch: a day strictly before the cursor's day.
 // Without this, a partial first day or one missed cohort would block every
 // pair for 90 days.
-export function planDyadRepair(snapshot, nowMs, maxDays) {
+function repairableDates(snapshot, nowMs) {
   const cursorDate = /^\d{14}$/.test(snapshot?.cursor ?? '')
     ? `${snapshot.cursor.slice(0, 4)}-${snapshot.cursor.slice(4, 6)}-${snapshot.cursor.slice(6, 8)}` : '';
   if (!cursorDate) return [];
-  return scoringWindow(nowMs)
-    .filter(date => date < cursorDate && snapshot.days?.[date]?.cohorts !== 96)
+  return scoringWindow(nowMs).filter(date => date < cursorDate && snapshot.days?.[date]?.cohorts !== 96);
+}
+
+// Repair candidates, newest first, skipping days still inside their backoff.
+export function planDyadRepair(snapshot, nowMs, maxDays) {
+  const failures = snapshot?.repairFailures ?? {};
+  return repairableDates(snapshot, nowMs)
+    .filter((date) => {
+      const failedAt = Number(failures[date]);
+      return !Number.isFinite(failedAt) || nowMs - failedAt >= DYAD_REPAIR_BACKOFF_MS;
+    })
     .slice(0, Math.max(0, maxDays));
 }
 
@@ -101,13 +116,19 @@ export function rebuildDyadDay(date, batches) {
 
 // Replace, never add: a partial day already holds some of these cohorts.
 // Days the live merge still owns, or that left the window, are ignored.
-export function replaceDyadDays(snapshot, rebuilt, nowMs) {
-  const eligible = new Set(planDyadRepair(snapshot, nowMs, 90));
+// Failure records follow the same rule: a rebuilt day clears its record, new
+// failures are added, and records for days no longer repairable are dropped.
+export function replaceDyadDays(snapshot, rebuilt, nowMs, failures = {}) {
+  const eligible = new Set(repairableDates(snapshot, nowMs));
   const days = structuredClone(snapshot.days ?? {});
   for (const [date, day] of Object.entries(rebuilt ?? {})) {
     if (eligible.has(date) && day?.cohorts === 96) days[date] = day;
   }
-  return { ...snapshot, days };
+  const { repairFailures: previousFailures, ...rest } = snapshot;
+  const stillRepairable = new Set(repairableDates({ ...snapshot, days }, nowMs));
+  const repairFailures = Object.fromEntries(Object.entries({ ...previousFailures, ...failures })
+    .filter(([date, failedAt]) => stillRepairable.has(date) && Number.isFinite(failedAt)));
+  return Object.keys(repairFailures).length ? { ...rest, days, repairFailures } : { ...rest, days };
 }
 
 // N = 20 measured conflict events/day × 7 days. Require 90 complete UTC
