@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 
 import { createHash } from 'node:crypto';
-import { parseDyadExport, mergeDyadBuckets, scoreDyads } from './_gdelt-dyad-tension.mjs';
+import {
+  dyadDayExportTimestamps,
+  mergeDyadBuckets,
+  parseDyadExport,
+  planDyadRepair,
+  rebuildDyadDay,
+  replaceDyadDays,
+  scoreDyads,
+} from './_gdelt-dyad-tension.mjs';
 import { GDELT_BULK_DYAD_KEY } from './_gdelt-bulk-contract.mjs';
 
 import {
@@ -21,11 +29,13 @@ import {
   parseGdeltGkgCsv,
 } from './_gdelt-bulk-materializer.mjs';
 import {
+  extractGdeltExportCsv,
   GDELT_MASTER_FILELIST_URL,
   GDELT_ROLLING_WINDOW_MS,
   gdeltTimestampToMs,
   mapGdeltExportToConflictEvents,
   mergeGdeltBulkRollingWindow,
+  parseGdeltRecentExports,
 } from './_conflict-gdelt-bulk.mjs';
 export {
   GDELT_INTEL_KEY,
@@ -58,6 +68,15 @@ const REQUEST_TIMEOUT_MS = 30_000;
 const SNAPSHOT_READ_TIMEOUT_MS = 30_000;
 const FETCH_CONCURRENCY = 4;
 const MAX_CATCHUP_FILES_PER_KIND = 8;
+// Dyad history repair. A day is 96 export ZIPs, about 3.6 MB and 11 s at this
+// concurrency (measured 2026-09-28). The live tick takes about 37 s of a 120 s
+// lock, so two days per tick fits and fills a 90-day window in about 11 hours.
+// The manifest lists about 288 lines (export, mentions, gkg) of about 107 bytes
+// per UTC day; 4 MB reaches 90 days back with margin, and each target day's
+// coverage is still checked before it is used.
+const DYAD_REPAIR_DAYS_PER_TICK = 2;
+const DYAD_REPAIR_BUDGET_MS = 60_000;
+const DYAD_REPAIR_TAIL_BYTES = 4_000_000;
 const RECENT_GKG_WINDOW_MS = 2 * 60 * 60 * 1000;
 export const GDELT_BULK_MAX_CONTENT_AGE_MIN = 3 * 60;
 const GDELT_SNAPSHOT_INTERVAL_MS = 15 * 60 * 1000;
@@ -265,6 +284,62 @@ export async function fetchGdeltBulkFiles({
   return downloaded;
 }
 
+// Rebuild incomplete past dyad days from the source exports, newest first.
+// Completed days are written to `into` as they finish, so a caller that stops
+// waiting still keeps them. Outcomes use a fixed vocabulary; no upstream text.
+export async function repairDyadHistory({
+  snapshot,
+  nowMs,
+  fetchImpl = globalThis.fetch,
+  maxDays = DYAD_REPAIR_DAYS_PER_TICK,
+  into = {},
+  deadlineAt = Infinity,
+  clock = Date.now,
+}) {
+  const outcomes = {};
+  const count = (outcome) => { outcomes[outcome] = (outcomes[outcome] ?? 0) + 1; };
+  const dates = planDyadRepair(snapshot, nowMs, maxDays);
+  if (dates.length === 0) return { days: into, outcomes };
+  const manifest = await fetchBoundedBuffer(
+    fetchImpl,
+    GDELT_MASTER_FILELIST_URL,
+    DYAD_REPAIR_TAIL_BYTES,
+    {
+      headers: { Range: `bytes=-${DYAD_REPAIR_TAIL_BYTES}` },
+      expectedStatus: 206,
+      discardRangePrefix: true,
+    },
+  );
+  const descriptors = parseGdeltRecentExports(manifest.toString('utf8'), Number.MAX_SAFE_INTEGER);
+  const byTimestamp = new Map(descriptors.map((descriptor) => [descriptor.exportTimestamp, descriptor]));
+  const earliest = descriptors[0]?.exportTimestamp ?? '';
+  for (const [index, date] of dates.entries()) {
+    if (clock() >= deadlineAt) { outcomes.over_budget = dates.length - index; break; }
+    const stamps = dyadDayExportTimestamps(date);
+    // A suffix range can start mid-day; only a tail that begins before the
+    // day proves a missing cohort is an upstream gap.
+    if (!earliest || earliest > stamps[0]) { count('manifest_short'); continue; }
+    const dayDescriptors = stamps.map((stamp) => byTimestamp.get(stamp));
+    if (dayDescriptors.some((descriptor) => !descriptor)) { count('upstream_gap'); continue; }
+    try {
+      const batches = await mapWithConcurrency(dayDescriptors, FETCH_CONCURRENCY, async (descriptor) => {
+        const zip = await fetchBoundedBuffer(fetchImpl, descriptor.url, descriptor.size);
+        if (zip.length !== descriptor.size
+          || createHash('md5').update(zip).digest('hex') !== descriptor.md5) {
+          throw Object.assign(new Error('dyad repair verification failed'), { repairOutcome: 'verify_failed' });
+        }
+        const csv = extractGdeltExportCsv(zip, descriptor.exportTimestamp);
+        return { timestamp: descriptor.exportTimestamp, dyads: parseDyadExport(csv) };
+      });
+      into[date] = rebuildDyadDay(date, batches);
+      count('repaired');
+    } catch (error) {
+      count(error?.repairOutcome ?? 'fetch_failed');
+    }
+  }
+  return { days: into, outcomes };
+}
+
 function recentBatches(previous, current, nowMs) {
   const cutoff = nowMs - RECENT_GKG_WINDOW_MS;
   const byTimestamp = new Map();
@@ -386,6 +461,8 @@ export async function fetchMaterializedGdelt(deps = {}) {
     _now = () => Date.now(),
     _readSnapshot = (key) => readSeedSnapshot(key, { strict: true, timeoutMs: SNAPSHOT_READ_TIMEOUT_MS }),
     _fetchFiles = fetchGdeltBulkFiles,
+    _repairDyadHistory = repairDyadHistory,
+    _dyadRepairBudgetMs = DYAD_REPAIR_BUDGET_MS,
   } = deps;
   const nowMs = _now();
   // The country index is read back from its own key rather than carried in
@@ -489,11 +566,35 @@ export async function fetchMaterializedGdelt(deps = {}) {
     throw new Error('GDELT bulk materializer has no conflict export data');
   }
 
-  const dyads = mergeDyadBuckets(previousDyads, downloaded
+  const liveDyads = mergeDyadBuckets(previousDyads, downloaded
     .filter(({ descriptor }) => descriptor.kind === 'export')
     .map(({ descriptor, dyads, csv }) => ({
       timestamp: descriptor.timestamp, dyads: dyads ?? parseDyadExport(csv),
     })), nowMs);
+  // History repair is best-effort: a failure or an overrun keeps whatever days
+  // finished and never holds or fails the live publication.
+  const repairedDays = {};
+  let repairTimer;
+  const repairOutcome = await Promise.race([
+    Promise.resolve()
+      .then(() => _repairDyadHistory({
+        snapshot: liveDyads, nowMs, into: repairedDays, deadlineAt: Date.now() + _dyadRepairBudgetMs,
+      }))
+      .then((result) => {
+        Object.assign(repairedDays, result?.days ?? {});
+        return result?.outcomes ?? {};
+      }, () => ({ failed: 1 })),
+    new Promise((resolve) => {
+      repairTimer = setTimeout(() => resolve({ over_budget: 1 }), _dyadRepairBudgetMs);
+      repairTimer.unref?.();
+    }),
+  ]).finally(() => clearTimeout(repairTimer));
+  const dyads = replaceDyadDays(liveDyads, repairedDays, nowMs);
+  if (Object.keys(repairOutcome).length > 0) {
+    const remaining = planDyadRepair(dyads, nowMs, 90).length;
+    const summary = Object.entries(repairOutcome).map(([outcome, n]) => `${outcome}=${n}`).join(' ');
+    console.log(`  Dyad history repair: ${summary} remaining=${remaining}`);
+  }
 
   return {
     ...materialized.intel,
