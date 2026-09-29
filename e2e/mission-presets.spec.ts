@@ -63,34 +63,43 @@ async function openMissionPopover(page: Page): Promise<void> {
   await expect(popover).toBeVisible();
 }
 
+type IdleHoldWindow = typeof window & { __wmFlushIdle?: () => number };
+
 /**
- * Queue every `requestIdleCallback` until `releaseIdleCallbacks`, so a test can
- * put the first idle period after an action a fast machine would beat.
+ * Queue every `requestIdleCallback` for the life of the page. Nothing runs until
+ * `releaseIdleCallbacks` flushes the queue, so a test decides where the first
+ * idle period lands relative to its own actions, and no callback can slip out
+ * later through the native scheduler.
  */
 async function holdIdleCallbacks(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const held: Array<() => void> = [];
-    const w = window as typeof window & { __wmReleaseIdle?: () => void };
-    let holding = true;
-    const original = window.requestIdleCallback?.bind(window);
-    window.requestIdleCallback = ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => {
-      const run = () => cb({ didTimeout: true, timeRemaining: () => 0 });
-      if (holding) {
-        held.push(run);
-        return 0;
-      }
-      return original ? original(cb, opts) : window.setTimeout(run, 0);
+    window.requestIdleCallback = ((cb: IdleRequestCallback) => {
+      held.push(() => cb({ didTimeout: true, timeRemaining: () => 0 }));
+      return 0;
     }) as typeof window.requestIdleCallback;
-    w.__wmReleaseIdle = () => {
-      holding = false;
-      for (const run of held.splice(0)) run();
+    (window as IdleHoldWindow).__wmFlushIdle = () => {
+      const batch = held.splice(0);
+      for (const run of batch) run();
+      return batch.length;
     };
   });
 }
 
-/** Run the held callbacks, then wait two frames for anything they mount. */
+/**
+ * Flush the held idle callbacks once the Mission prompt's is among them.
+ *
+ * `scheduleAfterFirstPaint` queues it two animation frames after `load`, so
+ * wait for `load` and then three frames: the page's two-frame chain started no
+ * later than ours and has queued by the time ours ends. Then wait two more
+ * frames for anything the callbacks mount.
+ */
 async function releaseIdleCallbacks(page: Page): Promise<void> {
-  await page.evaluate(() => (window as typeof window & { __wmReleaseIdle?: () => void }).__wmReleaseIdle?.());
+  await page.waitForLoadState('load');
+  await page.evaluate(() => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve)))));
+  const flushed = await page.evaluate(() => (window as IdleHoldWindow).__wmFlushIdle?.() ?? 0);
+  expect(flushed, 'the Mission prompt callback must be queued before the release').toBeGreaterThan(0);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
