@@ -63,6 +63,37 @@ async function openMissionPopover(page: Page): Promise<void> {
   await expect(popover).toBeVisible();
 }
 
+/**
+ * Queue every `requestIdleCallback` until `releaseIdleCallbacks`, so a test can
+ * put the first idle period after an action a fast machine would beat.
+ */
+async function holdIdleCallbacks(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const held: Array<() => void> = [];
+    const w = window as typeof window & { __wmReleaseIdle?: () => void };
+    let holding = true;
+    const original = window.requestIdleCallback?.bind(window);
+    window.requestIdleCallback = ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => {
+      const run = () => cb({ didTimeout: true, timeRemaining: () => 0 });
+      if (holding) {
+        held.push(run);
+        return 0;
+      }
+      return original ? original(cb, opts) : window.setTimeout(run, 0);
+    }) as typeof window.requestIdleCallback;
+    w.__wmReleaseIdle = () => {
+      holding = false;
+      for (const run of held.splice(0)) run();
+    };
+  });
+}
+
+/** Run the held callbacks, then wait two frames for anything they mount. */
+async function releaseIdleCallbacks(page: Page): Promise<void> {
+  await page.evaluate(() => (window as typeof window & { __wmReleaseIdle?: () => void }).__wmReleaseIdle?.());
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
 async function waitForEventHandlers(page: Page): Promise<void> {
   await page.waitForFunction(() => document.documentElement.dataset.wmEventHandlersReady === 'true');
 }
@@ -138,6 +169,41 @@ test.describe('mission presets', () => {
     await expect
       .poll(() => readJsonLocalStorage<Record<string, boolean>>(page, 'worldmonitor-layers').then((layers) => layers?.tradeRoutes))
       .toBe(true);
+  });
+
+  test('first-run prompt does not open over a modal the user already opened', async ({ page }) => {
+    // The prompt auto-opens on the first idle period after paint. On a slow
+    // machine that idle period can land after the user has opened a modal; the
+    // prompt then took focus and swallowed that modal's Escape, so the modal
+    // could not be closed from the keyboard (the WebMCP settings smoke failed
+    // that way on a CI runner). Hold idle callbacks to force that ordering.
+    test.setTimeout(150_000);
+    await holdIdleCallbacks(page);
+    await setupMissionPage(page, { width: 1440, height: 900 });
+    await expect(page.locator('#missionPresetBtn')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.mission-preset-popover')).toHaveCount(0);
+
+    await page.keyboard.press('Control+k');
+    await expect(page.locator('.search-overlay')).toBeVisible();
+
+    await releaseIdleCallbacks(page);
+    await expect(page.locator('.mission-preset-popover')).toHaveCount(0);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.search-overlay')).toBeHidden();
+  });
+
+  test('first-run prompt still auto-opens on a late idle period when no modal is open', async ({ page }) => {
+    // Positive control for the test above: the same held-then-released idle
+    // period must still open the prompt, or that test proves nothing.
+    test.setTimeout(150_000);
+    await holdIdleCallbacks(page);
+    await setupMissionPage(page, { width: 1440, height: 900 });
+    await expect(page.locator('#missionPresetBtn')).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.mission-preset-popover')).toHaveCount(0);
+
+    await releaseIdleCallbacks(page);
+    await expect(page.locator('.mission-preset-popover')).toBeVisible();
   });
 
   test('desktop mission can apply and reset to default state', async ({ page }, testInfo) => {
