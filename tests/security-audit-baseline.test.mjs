@@ -497,37 +497,21 @@ describe('security audit baseline', () => {
     assert.notEqual(viteEsbuild.version, rootEsbuild.version);
   });
 
-  it('flags a baseline entry that no longer matches any current advisory', () => {
-    // Every advisory currently baselined for pro-test must be present in the
-    // report for the no-stale case — image-size carries two.
-    const withAllBaselined = {
-      vulnerabilities: {
-        'image-size': {
-          name: 'image-size',
-          severity: 'high',
-          via: [
-            {
-              name: 'image-size',
-              severity: 'high',
-              title: 'image-size JXL/HEIF DoS',
-              url: 'https://github.com/advisories/GHSA-5p2g-fcmc-qvqq',
-            },
-            {
-              name: 'image-size',
-              severity: 'high',
-              title: 'image-size ICNS DoS',
-              url: 'https://github.com/advisories/GHSA-w3rx-r6r6-pgpr',
-            },
-          ],
-        },
-      },
-    };
+  it('flags a baseline entry that no longer matches any current advisory', (t) => {
+    const lockfile = 'stale-baseline-fixture/package-lock.json';
+    BASELINE_ADVISORIES_BY_LOCKFILE[lockfile] = [
+      { id: OLD_ADVISORY, expiresAt: '2026-11-05', reason: 'Test fixture' },
+    ];
+    t.after(() => { delete BASELINE_ADVISORIES_BY_LOCKFILE[lockfile]; });
+    const present = auditReportWith({
+      name: 'some-package',
+      severity: 'high',
+      title: 'Test advisory',
+      url: `https://github.com/advisories/${OLD_ADVISORY}`,
+    });
 
-    assert.deepEqual(collectStaleBaselineEntries(withAllBaselined, 'pro-test/package-lock.json'), []);
-    assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, 'pro-test/package-lock.json'), [
-      'GHSA-5p2g-fcmc-qvqq',
-      'GHSA-w3rx-r6r6-pgpr',
-    ]);
+    assert.deepEqual(collectStaleBaselineEntries(present, lockfile), []);
+    assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, lockfile), [OLD_ADVISORY]);
     assert.deepEqual(collectStaleBaselineEntries({ vulnerabilities: {} }, 'scripts/package-lock.json'), []);
   });
 
@@ -626,6 +610,7 @@ describe('npm audit failure reporting', () => {
 describe('Dependabot image-size and fast-uri remediation', () => {
   for (const lockPath of ['package-lock.json', 'pro-test/package-lock.json']) {
     it(`excludes vulnerable image-size copies from ${lockPath}`, () => {
+      assert.deepEqual(baselineEntriesFor(lockPath), []);
       const entries = Object.entries(readRepoJson(lockPath).packages)
         .filter(([path]) => path.endsWith('/image-size'));
       assert.ok(entries.length > 0, 'the Metro consumer must remain covered');
@@ -634,6 +619,11 @@ describe('Dependabot image-size and fast-uri remediation', () => {
       }
     });
   }
+
+  it('removes the legacy filename-based texture compressor', () => {
+    const paths = Object.keys(readRepoJson('package-lock.json').packages);
+    assert.equal(paths.some((path) => path.endsWith('/texture-compressor')), false);
+  });
 
   it('excludes vulnerable fast-uri copies from the Umami runtime lockfile', () => {
     const lock = readFileSync(new URL('../docker/umami/runtime/pnpm-lock.yaml', import.meta.url), 'utf8');
