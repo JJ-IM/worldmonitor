@@ -8262,7 +8262,7 @@ function pizzintLastLiveAt(meta) {
   return meta?.recordCount > 0 ? Number(meta.fetchedAt) || 0 : 0;
 }
 
-// A clean poll with no live reading is quiet hours, not an outage: advance the
+// A clean poll with no usable live reading is quiet hours, not an outage: advance the
 // heartbeat without touching the live payload. api/health.js lists pizzint in
 // EMPTY_DATA_OK_KEYS, so the expired payload then reads OK while this runs, and
 // STALE_SEED once it stops (provider errors, a dead loop, or 24h without a live
@@ -8352,6 +8352,9 @@ async function seedPizzint() {
     }
     if (locations.every(l => l.noLiveSignal)) {
       console.warn('[PizzINT] No live signals; preserving last good observation');
+      // BestTime still answered every venue cleanly (e.g. a closing venue reading
+      // 0), so the source is healthy; the 24h lastLiveAt cap catches dead sensors.
+      if (fallback?.answered) await recordPizzintQuietPoll();
       return;
     }
     const openLocations = published.filter((l) => !l.isClosedNow && !l.noLiveSignal);

@@ -530,10 +530,11 @@ test('repeated provider timestamps cannot establish persistence', async () => {
 test('all missing live signals preserve the previous payload and expiry', async () => {
   const run = await besttimeHarness([[40, 40]]);
   await run.seed();
-  const previous = structuredClone(run.state.cache);
+  const previous = structuredClone(run.state.cache.get(payloadKey));
   run.state.besttime.set(run.ids[0], liveReading(0, 40));
   await advance(run);
-  assert.deepEqual(run.state.cache, previous, 'a suspected dead sensor is no data, not quiet');
+  assert.deepEqual(run.state.cache.get(payloadKey), previous, 'a suspected dead sensor publishes nothing');
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, run.state.now, 'BestTime answered, so the heartbeat advances');
 });
 
 for (const currentPopularity of [0, undefined]) {
@@ -984,4 +985,38 @@ test('a live-only venue ignores any forecast BestTime returns, so it never gains
   assert.equal(dominos.hasBaseline, false);
   assert.equal(dominos.isSpike, false);
   assert.equal(run.status().activeSpikes, 0);
+});
+
+// 2026-09-29 01:05-01:50 UTC: every poll was accepted=1 unavailable=5, and the one
+// accepted reading was a suspected dead sensor (live 0 against a forecast >= 20).
+// BestTime answered cleanly, yet pizzint went STALE_SEED.
+test('a clean poll whose only readings are suspected dead sensors keeps health OK', async () => {
+  const run = await quietAfterLive();
+  const payload = structuredClone(run.state.cache.get(payloadKey));
+  run.state.besttime.set(run.ids[0], liveReading(0, 40));
+  for (let tick = 0; tick < 5; tick++) await advance(run);
+  assert.ok(run.state.now >= payload.expiresAt, 'the live payload expired');
+  const meta = run.state.cache.get(metaKey).data;
+  assert.equal(meta.fetchedAt, run.state.now);
+  assert.equal(meta.recordCount, 0);
+  assert.equal(meta.lastLiveAt, payload.data.data.pizzint.updatedAt, 'a dead-sensor reading is not a live reading');
+  assert.equal(classifyPizzint(run.state).status, 'OK');
+});
+
+test('a dead-sensor poll with any failing venue does not advance the heartbeat', async () => {
+  const run = await quietAfterLive();
+  const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
+  run.state.besttime.set(run.ids[0], liveReading(0, 40));
+  run.state.besttime.set(run.ids[1], { ok: false, status: 429 });
+  await advance(run);
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat);
+});
+
+test('dead-sensor polls still go stale 24 hours after the last live reading', async () => {
+  const run = await quietAfterLive();
+  const lastLiveAt = run.state.now;
+  run.state.besttime.set(run.ids[0], liveReading(0, 40));
+  while (run.state.now - lastLiveAt < 24 * 60 * 60_000) await advance(run);
+  for (let tick = 0; tick < 4; tick++) await advance(run);
+  assert.equal(classifyPizzint(run.state).status, 'STALE_SEED');
 });
