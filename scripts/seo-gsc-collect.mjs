@@ -1244,6 +1244,9 @@ export async function collectGscSnapshot({
 }) {
   const inventory = buildInventory(documents);
   invariant(inventory.urls.length > 0, 'the sitemap inventory is empty');
+  // Before any API call: a bad ledger found after inspection would burn the
+  // day's quota and leave no snapshot to show for it.
+  const coverageTotals = summarizeCoverageTotals(coverageReadings, observedAt);
 
   // Search Analytics first: it is cheap, and an auth or permission failure
   // there must stop the run before any of the daily inspection quota is spent.
@@ -1445,7 +1448,7 @@ export async function collectGscSnapshot({
       ),
     },
     performance,
-    coverageTotals: summarizeCoverageTotals(coverageReadings, observedAt),
+    coverageTotals,
     samplingNotes,
     guardrails: [
       'Shares are measured over inspected rows. No sampled share is projected onto a reported total.',
@@ -1768,7 +1771,7 @@ export function renderGscMarkdown(snapshot) {
     lines.push('| Exported | Declared URLs | Page with redirect | Not found (404) | Crawled, currently not indexed | Source |');
     lines.push('|---|---:|---:|---:|---:|---|');
     for (const row of coverage.readings) {
-      lines.push(`| ${row.exportedOn} | ${row.declaredUrls} | ${row.pageWithRedirect} | ${row.notFound404} | ${row.crawledNotIndexed} | ${row.source} |`);
+      lines.push(`| ${row.exportedOn} | ${row.declaredUrls} | ${row.pageWithRedirect} | ${row.notFound404} | ${row.crawledNotIndexed} | ${markdownCell(row.source)} |`);
     }
     lines.push('');
   }

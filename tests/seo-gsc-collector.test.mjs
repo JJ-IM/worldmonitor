@@ -960,10 +960,21 @@ describe('Search Console coverage totals recorded by hand', () => {
     assert.equal(stale.coverageTotals.overdue, true);
     assert.match(renderGscMarkdown(stale), /Overdue: the latest reading is 36 days old/);
 
+    let calls = 0;
+    const counting = memoryTransport({
+      searchAnalytics: async () => { calls += 1; return { rows: [] }; },
+      inspect: async () => { calls += 1; return indexedResponse; },
+    });
     await assert.rejects(
-      () => collectFrom(memoryTransport(), { coverageReadings: [reading('2026-09-25')] }),
+      () => collectFrom(counting, { coverageReadings: [reading('2026-09-25')] }),
       /later than the snapshot date/,
     );
+    assert.equal(calls, 0, 'a bad ledger must stop the run before any API quota is spent');
+
+    const piped = await collectFrom(memoryTransport(), {
+      coverageReadings: [reading('2026-09-04', { source: 'https://example.com/a|b' })],
+    });
+    assert.match(renderGscMarkdown(piped), /\| https:\/\/example\.com\/a\\\|b \|$/m);
 
     const none = await collectFrom(memoryTransport());
     assert.equal(none.coverageTotals.latestAgeDays, null);
