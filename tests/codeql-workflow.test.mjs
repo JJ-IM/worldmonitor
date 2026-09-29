@@ -63,8 +63,11 @@ test('daily JS/TS and weekly all-language scans, with full manual recovery', asy
   assert.deepEqual(await select([], { event: 'schedule', schedule: '23 3 * * 1-6' }), ['javascript-typescript']);
   assert.deepEqual(await select([], { event: 'schedule', schedule: '23 3 * * 0' }), all);
   assert.deepEqual(await select([], { event: 'workflow_dispatch' }), all);
+  assert.deepEqual(await select([], { event: 'push' }), all);
   assert.deepEqual(workflow.on.schedule.map(entry => entry.cron), ['23 3 * * 1-6', '23 3 * * 0']);
-  assert.equal(workflow.on.push, undefined);
+  // CodeQL warns on every run without an on.push hook. Scoping it to this file
+  // silences that and scans all languages on main when scan config lands.
+  assert.deepEqual(workflow.on.push, { branches: ['main'], paths: ['.github/workflows/codeql.yml'] });
   assert.ok('pull_request' in workflow.on);
   assert.equal(workflow.on.pull_request?.paths, undefined);
 });
