@@ -1056,3 +1056,13 @@ test('an open venue with a fresh reading renews lastLiveAt even beside closed ze
   await advance(run);
   assert.equal(run.state.cache.get(metaKey).data.lastLiveAt, run.state.now);
 });
+
+test('a closed-zero publication with a failing venue publishes but withholds the heartbeat', async () => {
+  const run = await quietAfterLive();
+  const heartbeat = run.state.cache.get(metaKey).data.fetchedAt;
+  run.state.besttime.set(run.ids[0], closedZero());
+  run.state.besttime.set(run.ids[1], { ok: false, status: 429 });
+  await advance(run);
+  assert.equal(run.state.cache.get(payloadKey).data.data.pizzint.updatedAt, run.state.now, 'the closed venue is still published');
+  assert.equal(run.state.cache.get(metaKey).data.fetchedAt, heartbeat, 'BestTime did not answer cleanly');
+});

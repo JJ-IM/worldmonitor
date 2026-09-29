@@ -8389,11 +8389,12 @@ async function seedPizzint() {
     const payload = { pizzint, tensionPairs: [] };
     const ok1 = await envelopeWrite(PIZZINT_REDIS_KEY, payload, PIZZINT_SEED_TTL, { recordCount: locations.length, sourceVersion: fallback ? 'besttime-live' : 'pizzint' });
     // Only an open venue's fresh reading is live. A publication of closed zeros or
-    // stale readings carries lastLiveAt and takes the capped quiet heartbeat.
+    // stale readings carries lastLiveAt and takes the capped quiet heartbeat, and
+    // from BestTime only when every venue answered cleanly.
     const hasLiveSignal = published.some((l) => !l.noLiveSignal && !l.isClosedNow && l.dataFreshness === 'DATA_FRESHNESS_FRESH');
     const ok2 = ok1 && (hasLiveSignal
       ? await upstashSet(PIZZINT_SEED_META_KEY, { fetchedAt: Date.now(), recordCount: locations.length, lastLiveAt: Date.now() }, 604800)
-      : await recordPizzintQuietPoll(locations.length));
+      : !fallback || fallback.answered ? await recordPizzintQuietPoll(locations.length) : true);
     console.log(`[PizzINT] Seeded ${locations.length} locations (open:${openLocations.length} spikes:${activeSpikes} defcon:${defconLevel} redis:${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   } catch (e) {
     console.warn('[PizzINT] Seed error:', e?.message || e);
