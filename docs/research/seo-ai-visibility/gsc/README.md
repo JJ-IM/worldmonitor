@@ -104,17 +104,27 @@ Search Analytics also reports URLs we never declared: legacy paths such as
 They stay in the window totals and appear by name under `unmapped`, so each
 recurring one can be given a family.
 
-**A brand-only unmapped URL at position 1 is a sitelink, not a page that
-ranks.** On 2026-09-25 `/zh/map-engine` had 9,486 impressions at position
-1.18, almost all from queries such as "world monitor". It 308s to
-`/docs/zh/map-engine`, and URL Inspection shows Google already chose that
-destination as canonical. Google still credited the sitelink impressions to the
-URL it had discovered, which was the unprefixed path in Mintlify's
-server-rendered navigation data. Our `<a href>` and `hreflang` links carry
-`/docs`. The row appeared the week of 2026-09-06 and had dropped to 153
-impressions by the week of 2026-09-20. `/'to` followed the same pattern in June
-and early September. Before chasing a row like this, split it by query and by
-date (#8700).
+**A brand-only unmapped URL at position 1 is likely a sitelink, not a page
+that ranks.** The snapshot cannot show this on its own. Its `topQueries` cover
+the whole window, not one URL, and it holds no inspection result for an
+undeclared URL. The 2026-09-25 snapshot recorded `/zh/map-engine` with 9,486
+impressions at position 1.18. A separate check on 2026-09-29 ran URL
+Inspection and Search Analytics filtered to that page, by query and by week
+([results on #8700](https://github.com/koala73/worldmonitor/issues/8700#issuecomment-5886812477)).
+It found the following:
+
+- Every impression came from a brand query such as "world monitor", at
+  position 1.0 to 1.2. That is the same slot as the homepage and its other
+  sitelinks.
+- Google's canonical for the URL is its 308 destination,
+  `/docs/zh/map-engine`.
+- The row began the week of 2026-09-06 and fell to 153 impressions by the
+  week of 2026-09-20.
+- `/'to` followed the same pattern.
+
+The unprefixed path comes from Mintlify's server-rendered navigation data. Our
+`<a href>` and `hreflang` links carry `/docs`. Before chasing a row like this,
+rerun that page-filtered split.
 
 ## Monthly coverage totals
 
