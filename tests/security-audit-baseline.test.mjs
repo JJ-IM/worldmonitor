@@ -614,10 +614,7 @@ describe('Dependabot image-size and fast-uri remediation', () => {
       assert.deepEqual(baselineEntriesFor(lockPath), []);
       const entries = Object.entries(readRepoJson(lockPath).packages)
         .filter(([path]) => path.endsWith('/image-size'));
-      assert.ok(entries.length > 0, 'the Metro consumer must remain covered');
-      for (const [path, entry] of entries) {
-        assert.ok(atLeast(entry.version, '2.0.3'), `${lockPath}: ${path}@${entry.version} is vulnerable`);
-      }
+      assert.deepEqual(entries, [], 'Metro must use its upstream image parser');
     });
   }
 
