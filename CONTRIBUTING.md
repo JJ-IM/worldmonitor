@@ -335,6 +335,9 @@ The repository owner must coordinate activation with the approved merge:
 4. If analysis or uploads fail, restore default setup and disable the advanced
    workflow until repaired. Avoid leaving both disabled or allowing both to run
    as the steady state.
+   If the merge or manual dispatch cannot proceed after default setup is
+   disabled, restore default setup immediately. An interrupted handover is not
+   complete; do not leave main without an active scan configuration.
 
 Run `node --test tests/codeql-workflow.test.mjs` for local selection and workflow
 contract checks. These tests do not execute CodeQL or prove SARIF upload access.
