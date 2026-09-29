@@ -1965,12 +1965,15 @@ describe('Puppeteer-driven crawler frames (WORLDMONITOR-169)', () => {
     assert.equal(beforeSend(event), null);
   });
 
-  it('suppresses on a percent-encoded Puppeteer adapter filename alone', () => {
+  it('does NOT suppress on a "puppeteer"-named frame without the pptr: source URL', () => {
+    // The match keys on Puppeteer's source-URL scheme, which no bundle asset or
+    // function name can carry, not on the word. A chunk or function of ours that
+    // merely mentions puppeteer must still report.
     const event = makeEvent(msg, 'TypeError', [
-      { filename: 'C%3A%5Csnapshot%5Ccommon-browser-driver%5Cpuppeteer-adapter.js', lineno: 11763, function: 'evaluate' },
+      { filename: '/assets/puppeteer-helpers-Bx81kQ2a.js', lineno: 12, function: 'puppeteerLikeDriver' },
       firstPartyFrame('/assets/main-Bx81kQ2a.js', 'rb'),
     ]);
-    assert.equal(beforeSend(event), null);
+    assert.ok(beforeSend(event) !== null, 'a puppeteer-named first-party frame must reach Sentry');
   });
 
   it('does NOT suppress the same error from first-party frames without Puppeteer', () => {

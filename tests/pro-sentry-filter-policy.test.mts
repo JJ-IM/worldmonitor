@@ -398,6 +398,24 @@ describe('marketingBeforeSend — Puppeteer crawler and page-evaluated /sw.js', 
     assert.equal(marketingBeforeSend(dropped), null);
   });
 
+  it('keeps a "puppeteer"-named frame that lacks the pptr: source URL', () => {
+    const kept: PolicyEvent = {
+      exception: {
+        values: [{
+          type: 'TypeError',
+          value: inNull,
+          stacktrace: {
+            frames: [
+              { filename: '/pro/assets/puppeteer-helpers-a1b2c3.js', function: 'puppeteerLikeDriver' },
+              { filename: '/pro/assets/index-a1b2c3.js', function: 'rb' },
+            ],
+          },
+        }],
+      },
+    };
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
   it('keeps the same error when no Puppeteer frame is in the stack', () => {
     const kept = event(inNull, ['/pro/assets/clerk-a1b2c3.js', '/pro/assets/index-a1b2c3.js']);
     assert.equal(marketingBeforeSend(kept), kept);

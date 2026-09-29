@@ -724,8 +724,10 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // the code it evaluates with a `pptr:` source URL, so its frame sits in
       // the stack of everything that script sets off, including handlers of
       // ours it fires with `isTrusted: false` events. No real user runs
-      // Puppeteer, so no frame gate applies (WORLDMONITOR-169).
-      if (frames.some(f => /\bpptr:|puppeteer/i.test(`${f.function ?? ''} ${f.filename ?? ''}`))) return null;
+      // Puppeteer, so no frame gate applies (WORLDMONITOR-169). The scheme, not
+      // the word `puppeteer`, is the key: a colon cannot occur in a bundle asset
+      // path or a function name, so a frame of ours can never carry it.
+      if (frames.some(f => /\bpptr:/.test(`${f.function ?? ''} ${f.filename ?? ''}`))) return null;
       // The service worker's own script evaluated in a page. `/sw.js` is only
       // ever registered with `navigator.serviceWorker.register` (src/main.ts),
       // where there is no `document` and this page's Sentry client cannot see

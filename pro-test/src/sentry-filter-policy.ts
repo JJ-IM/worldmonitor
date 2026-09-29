@@ -410,8 +410,12 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
 const SENTRY_CHUNK_FRAME = /\/assets\/sentry-[A-Za-z0-9_-]+\.js/;
 /** Marketing bundle output. `pro-test/vite.config.ts` sets `base: '/pro/'`. */
 const MARKETING_ASSET_FRAME = /\/pro\/assets\/[A-Za-z0-9_-]+\.js/;
-/** Code evaluated by Puppeteer: its `pptr:` source URL or its adapter file. */
-const PUPPETEER_FRAME = /\bpptr:|puppeteer/i;
+/**
+ * Code evaluated by Puppeteer, which tags it with a `pptr:` source URL. The
+ * scheme, not the word `puppeteer`, is the key: a colon cannot occur in a bundle
+ * asset path or a function name, so a frame of ours can never carry it.
+ */
+const PUPPETEER_FRAME = /\bpptr:/;
 /** The root service-worker script, which only a worker should ever run. */
 const SERVICE_WORKER_SCRIPT_FRAME = /^(?:https?:\/\/[^/]+)?\/sw\.js$/;
 /** A whole message that is nothing but a short identifier. */
