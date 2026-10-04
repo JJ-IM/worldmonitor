@@ -327,6 +327,26 @@ describe('baseline rot', () => {
 });
 
 describe('baseline entry validation', () => {
+  it('does not suppress the backported braces and http-cache-semantics advisories', () => {
+    for (const [lockfile, id] of [
+      ['package-lock.json', 'GHSA-vfj7-8cjw-p6xm'],
+      ['pro-test/package-lock.json', 'GHSA-vfj7-8cjw-p6xm'],
+      ['blog-site/package-lock.json', 'GHSA-ch52-4w7c-c8xp'],
+    ]) {
+      assert.equal(baselineEntriesFor(lockfile).some((entry) => entry.id === id), false);
+      const result = classifyAudit({
+        findings: [finding(id)],
+        lockfile,
+        presentAdvisoryIds: new Set([id]),
+        introducedIds: new Set([id]),
+        publishedAt: new Map(),
+        now: NOW,
+      });
+      assert.equal(result.suppressed.length, 0);
+      assert.equal(formatAuditReport(result, { now: NOW }).failed, true);
+    }
+  });
+
   it('accepts the baseline this repo actually ships', () => {
     assert.equal(validateBaselineEntries(), true);
   });
