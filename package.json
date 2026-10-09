@@ -301,6 +301,7 @@
     "pmtiles": "^4.4.0",
     "preact": "^10.25.4",
     "satellite.js": "^6.0.2",
+    "stream-json": "file:vendor/stream-json",
     "supercluster": "^8.0.1",
     "telegram": "^2.26.22",
     "topojson-client": "^3.1.0",
@@ -327,7 +328,7 @@
     "brace-expansion@1": "^1.1.21",
     "brace-expansion@2": "^2.1.7",
     "brace-expansion@5": "^5.0.12",
-    "sharp": "0.35.4",
+    "sharp": "0.35.5",
     "postcss": "8.5.23",
     "fast-uri": "3.1.8",
     "markdown-it": "14.3.1",
@@ -338,6 +339,8 @@
       "@loaders.gl/gltf": "4.5.2",
       "@loaders.gl/textures": "4.5.2"
     },
-    "metro": "0.83.8"
+    "metro": "0.83.8",
+    "stream-json": "$stream-json",
+    "katex": "0.18.2"
   }
 }
