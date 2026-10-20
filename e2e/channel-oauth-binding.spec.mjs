@@ -2,6 +2,19 @@ import assert from 'node:assert/strict';
 import { test } from '@playwright/test';
 import { createChannelOAuthState, callbackMatchesBrowser } from '../server/_shared/channel-oauth-state.ts';
 import bindHandler from '../api/channel-oauth-bind.ts';
+import { __resetRateLimitForTest } from '../server/_shared/rate-limit.ts';
+
+function isLimiterCall(url, init) {
+  if (String(url).includes('/get/')) return false;
+  const text = typeof init?.body === 'string' ? init.body : '';
+  return text.includes('rl:scope:channel-oauth-bind') || String(url).includes('/pipeline');
+}
+
+function answerLimiter(init) {
+  const parsed = JSON.parse(String(init.body));
+  const result = [29, 30];
+  return Array.isArray(parsed[0]) ? Response.json(parsed.map(() => ({ result }))) : Response.json({ result });
+}
 
 const api = 'https://api.worldmonitor.app';
 for (const provider of ['slack', 'discord']) {
@@ -18,6 +31,7 @@ for (const provider of ['slack', 'discord']) {
         let callbackMatches;
         let postedSecret = '';
         globalThis.fetch = async (url, init = {}) => {
+          if (isLimiterCall(url, init)) return answerLimiter(init);
           if (String(url).includes('/get/')) return Response.json({ result: store.get(decodeURIComponent(new URL(String(url)).pathname.slice(5))) ?? null });
           const [, , , key, value] = JSON.parse(String(init.body));
           const matches = store.get(key) === value;
@@ -63,6 +77,7 @@ for (const provider of ['slack', 'discord']) {
         assert.equal(store.size, 0);
         await context.close();
       } finally {
+        __resetRateLimitForTest();
         globalThis.fetch = originalFetch;
         if (savedEnv.url === undefined) delete process.env.UPSTASH_REDIS_REST_URL; else process.env.UPSTASH_REDIS_REST_URL = savedEnv.url;
         if (savedEnv.token === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN; else process.env.UPSTASH_REDIS_REST_TOKEN = savedEnv.token;
