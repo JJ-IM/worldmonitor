@@ -16,6 +16,7 @@ import { validateUserApiKey } from '../../../../server/_shared/user-api-key';
 import { checkFailClosedScopedIpRateLimit } from '../../../../server/_shared/rate-limit';
 import { resolvePremiumCallerIdentity } from '../../../../server/_shared/premium-check';
 import { getCachedJson } from '../../../../server/_shared/redis';
+import { stripTrailingSlashes } from '../../../../shared/strip-trailing-slashes.js';
 import {
   webhookKey,
   callerFingerprint,
@@ -82,7 +83,7 @@ export default async function handler(req: Request): Promise<Response> {
   }
 
   const url = new URL(req.url);
-  const parts = url.pathname.replace(/\/+$/, '').split('/');
+  const parts = stripTrailingSlashes(url.pathname).split('/');
   const subscriberId = parts[parts.length - 1];
   if (!subscriberId || !subscriberId.startsWith('wh_')) {
     return new Response(JSON.stringify({ error: 'Webhook not found' }), {
