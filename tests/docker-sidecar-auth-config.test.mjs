@@ -114,7 +114,12 @@ test('frontend nginx authenticates TLS upstreams for every API location', () => 
     'proxy_ssl_server_name on;',
     'proxy_ssl_name $proxy_host;',
   ]) assert.ok(httpDefaults.includes(directive), directive);
-  assert.equal((nginx.match(/proxy_pass \$\{API_UPSTREAM\};/g) ?? []).length, 3);
+  // Upstream's template has three API locations. This fork has one `/api/`
+  // proxy. The verify directives live in the http block, so every
+  // `proxy_pass ${API_UPSTREAM}` inherits them. A later location that turns
+  // verification off is rejected below.
+  const apiPasses = nginx.match(/proxy_pass \$\{API_UPSTREAM\};/g) ?? [];
+  assert.ok(apiPasses.length >= 1, 'at least one API location must proxy to API_UPSTREAM');
   assert.doesNotMatch(nginx, /proxy_ssl_(?:verify|server_name)\s+off;/);
 });
 
