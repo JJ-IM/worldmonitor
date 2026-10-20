@@ -1705,8 +1705,11 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: routes that deliberately resolved a sessionUserId pass this layer.
+    // Never for a legacy Pro bearer route: a session proves identity, not Pro,
+    // and skipping that gate would hand a free account the premium handler.
     if (
       (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) &&
+      !needsLegacyProBearerGate &&
       sessionUserId &&
       keyCheck.required &&
       !keyCheck.valid
