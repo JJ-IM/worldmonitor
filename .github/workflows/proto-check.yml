@@ -21,6 +21,7 @@ env:
     scripts/_html-entities.mjs
     scripts/apply-openapi-filter-param-schemas.mjs
     scripts/generate-request-validation.mjs
+    scripts/harden-generated-server-errors.mjs
     scripts/generate-scorecard-edge-mirrors.mjs
     scripts/lib/main-module.mjs
     scripts/lib/openapi-codegen.mjs
@@ -51,6 +52,8 @@ env:
     scripts/shared/iso2-to-region.json
     server/_shared/api-key-rate-limit.ts
     server/_shared/auth-session.ts
+    server/_shared/bounded-jmespath.ts
+    server/_shared/bounded-json.ts
     server/_shared/cache-contract.ts
     server/_shared/client-ip.ts
     server/_shared/deprecation-policy.ts

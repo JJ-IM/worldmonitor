@@ -104,6 +104,25 @@ test('Docker nginx denies the native administration namespace before the data pr
   assert.match(staticNginx, /proxy_pass \$\{API_UPSTREAM\}/);
 });
 
+test('frontend nginx authenticates TLS upstreams for every API location', () => {
+  const nginx = readProjectFile('docker/nginx.conf.template');
+  const httpDefaults = nginx.slice(nginx.indexOf('http {'), nginx.indexOf('  server {'));
+  for (const directive of [
+    'proxy_ssl_verify on;',
+    'proxy_ssl_verify_depth 3;',
+    'proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;',
+    'proxy_ssl_server_name on;',
+    'proxy_ssl_name $proxy_host;',
+  ]) assert.ok(httpDefaults.includes(directive), directive);
+  // Upstream's template has three API locations. This fork has one `/api/`
+  // proxy. The verify directives live in the http block, so every
+  // `proxy_pass ${API_UPSTREAM}` inherits them. A later location that turns
+  // verification off is rejected below.
+  const apiPasses = nginx.match(/proxy_pass \$\{API_UPSTREAM\};/g) ?? [];
+  assert.ok(apiPasses.length >= 1, 'at least one API location must proxy to API_UPSTREAM');
+  assert.doesNotMatch(nginx, /proxy_ssl_(?:verify|server_name)\s+off;/);
+});
+
 // Opt in where nginx is installed: WM_TEST_NGINX=/usr/sbin/nginx node --test ...
 test('shipped nginx configurations separate native management from Docker data APIs', {
   skip: !process.env.WM_TEST_NGINX,

@@ -952,6 +952,12 @@ export function hasCredentialBearingHeader(request: Request): boolean {
   return CREDENTIAL_BEARING_HEADERS.some((header) => Boolean(request.headers.get(header)));
 }
 
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 1 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return end === value.length ? value : value.slice(0, end);
+}
+
 async function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): Promise<boolean> {
   if (pathname !== '/api/resilience/v1/get-resilience-ranking') return false;
   const expected = process.env.WORLDMONITOR_SEED_REFRESH_KEY?.trim() ?? '';
@@ -1012,7 +1018,7 @@ export function createDomainGateway(
 
     let request = stripClientTrustedHeaders(originalRequest);
     const rawPathname = new URL(request.url).pathname;
-    const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
+    const pathname = stripTrailingSlashes(rawPathname);
     const t0 = Date.now();
 
     // Usage-telemetry identity inputs — accumulated as gateway auth resolution progresses.
@@ -1296,7 +1302,7 @@ export function createDomainGateway(
         // configuration incident (#7277).
         emitRequest(500, 'hmac_secret_unconfigured', null);
         return new Response(
-          JSON.stringify({ error: 'CONFIGURATION', detail: 'MCP_INTERNAL_HMAC_SECRET not configured' }),
+          JSON.stringify({ error: 'CONFIGURATION' }),
           { status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
         );
       }
@@ -1705,8 +1711,11 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: routes that deliberately resolved a sessionUserId pass this layer.
+    // Never for a legacy Pro bearer route: a session proves identity, not Pro,
+    // and skipping that gate would hand a free account the premium handler.
     if (
       (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) &&
+      !needsLegacyProBearerGate &&
       sessionUserId &&
       keyCheck.required &&
       !keyCheck.valid
