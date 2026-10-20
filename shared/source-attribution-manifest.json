@@ -10569,6 +10569,9 @@
       "references": [
         {
           "path": "src/shared/public-rpc-cache.ts"
+        },
+        {
+          "path": "src/utils/dom-utils.ts"
         }
       ]
     },
